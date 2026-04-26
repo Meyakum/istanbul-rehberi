@@ -25,6 +25,15 @@
   background: #f1f5f9;
 }
 
+/* Remove default background and border from Leaflet markers */
+.leaflet-div-icon,
+.leaflet-marker-icon.start-marker, 
+.leaflet-marker-icon.custom-icon {
+  background: transparent !important;
+  border: none !important;
+  box-shadow: none !important;
+}
+
 .leaflet-popup-content-wrapper {
   @apply rounded-xl shadow-xl border border-slate-100;
 }
@@ -43,6 +52,16 @@
 .marker-category:hover {
   transform: scale(1.1);
   box-shadow: 0 6px 15px rgba(0,0,0,0.3);
+}
+
+@keyframes pulse {
+  0% { transform: scale(1); opacity: 0.3; }
+  50% { transform: scale(1.5); opacity: 0; }
+  100% { transform: scale(1); opacity: 0.3; }
+}
+
+.user-location-marker > div:last-child {
+  animation: pulse 2s infinite;
 }
 
 @keyframes ant-path-anim {

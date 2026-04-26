@@ -64,24 +64,30 @@ const categoryMapping: { [key: string]: { icon: string, color: string } } = {
   "Sanat Merkezi": { icon: "fa-ticket", color: "#ef4444" }
 };
 
-const createCategoryIcon = (tur: string, number?: number) => {
+const createCategoryIcon = (tur: string, label?: string, customColor?: string) => {
   let matched = { icon: "fa-map-marker-alt", color: "#3b82f6" };
   
   for (const key in categoryMapping) {
     if (tur.toLowerCase().includes(key.toLowerCase())) {
-      matched = categoryMapping[key];
+      matched = { ...categoryMapping[key] };
       break;
     }
   }
+
+  const markerColor = customColor || matched.color;
 
   return L.divIcon({
     className: 'custom-icon',
     html: `
       <div class="marker-container" style="position: relative; display: flex; flex-direction: column; align-items: center;">
-        <div class="marker-category" style="background-color: ${matched.color}; color: white; width: 38px; height: 38px; border-radius: 14px; display: flex; align-items: center; justify-content: center; font-size: 16px; border: 2px solid white; box-shadow: 0 0 15px ${matched.color}80, 0 4px 12px rgba(0,0,0,0.3); transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);">
+        <div class="marker-category" style="background-color: ${markerColor}; color: white; width: 38px; height: 38px; border-radius: 14px; display: flex; align-items: center; justify-content: center; font-size: 16px; border: 2px solid white; box-shadow: 0 0 15px ${markerColor}80, 0 4px 12px rgba(0,0,0,0.3); transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);">
           <i class="fa-solid ${matched.icon}"></i>
         </div>
-        ${number ? `<div style="position: absolute; top: -8px; right: -8px; background: #FFF; color: ${matched.color}; width: 22px; height: 22px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 11px; font-weight: 900; border: 2px solid ${matched.color}; box-shadow: 0 0 10px ${matched.color}40; z-index: 10;">${number}</div>` : ''}
+        ${label ? `
+          <div style="position: absolute; top: -14px; left: 50%; transform: translateX(-50%); background: white; color: ${markerColor}; padding: 2px 8px; border-radius: 8px; display: flex; align-items: center; justify-content: center; font-size: 10px; font-weight: 900; border: 2px solid ${markerColor}; box-shadow: 0 2px 8px rgba(0,0,0,0.2); z-index: 10; white-space: nowrap;">
+            ${label}
+          </div>
+        ` : ''}
       </div>
     `,
     iconSize: [42, 42],
@@ -91,10 +97,12 @@ const createCategoryIcon = (tur: string, number?: number) => {
 
 const dayColors = ["#3b82f6", "#10b981", "#f59e0b", "#ef4444", "#8b5cf6", "#ec4899", "#06b6d4"];
 
-function MapUpdater({ center }: { center: [number, number] }) {
+function MapUpdater({ center }: { center: [number, number] | null }) {
   const map = useMap();
   useEffect(() => {
-    map.flyTo(center, 15, { duration: 1.5 });
+    if (center) {
+      map.setView(center, map.getZoom(), { animate: true });
+    }
   }, [center, map]);
   return null;
 }
@@ -185,16 +193,18 @@ export default function App() {
   const [activeScreen, setActiveScreen] = useState<'landing' | 'app'>('landing');
   const [activeTab, setActiveTab] = useState<'otel' | 'semt'>('otel');
   const [selectedHotel, setSelectedHotel] = useState<Hotel>(ISTANBUL_DATA.populer_oteller[0]);
-  const [selectedDistrict, setSelectedDistrict] = useState<string>("Sultanahmet");
+  const [selectedDistrict, setSelectedDistrict] = useState<string>("Fatih");
   const [duration, setDuration] = useState<number>(3);
   const [pace, setPace] = useState<number>(4);
-  const [preferences, setPreferences] = useState<string[]>(['history', 'views', 'worship', 'nature', 'fortress']);
+  const [preferences, setPreferences] = useState<string[]>([]);
   const [routeData, setRouteData] = useState<{ day: number, venues: Venue[] }[]>([]);
   const [selectedVenue, setSelectedVenue] = useState<Venue | null>(null);
   const [isSidebarOpen, setIsSidebarOpen] = useState(true);
   const [isGenerating, setIsGenerating] = useState(false);
   const [isExplorerMode, setIsExplorerMode] = useState(false);
   const [isViewingRoute, setIsViewingRoute] = useState(false);
+  const [visibleDay, setVisibleDay] = useState<number | null>(null);
+  const [isRightSidebarOpen, setIsRightSidebarOpen] = useState(true);
   const [showHowItWorks, setShowHowItWorks] = useState(false);
   const [lang, setLang] = useState<'tr' | 'en'>('tr');
   const [theme, setTheme] = useState<'light' | 'dark'>('light');
@@ -212,6 +222,14 @@ export default function App() {
       document.documentElement.classList.remove('dark');
     }
   }, [theme]);
+
+  useEffect(() => {
+    if (lang === 'en' && selectedVenue) {
+      if (!selectedVenue.isim_en || !selectedVenue.tur_en || !selectedVenue.kisa_tarihce_en) {
+        console.warn(`Missing EN translations for venue: ${selectedVenue.isim}`);
+      }
+    }
+  }, [selectedVenue, lang]);
 
   useEffect(() => {
     console.log(`Loaded ${ISTANBUL_DATA.turistik_mekanlar.length} venues.`);
@@ -305,13 +323,15 @@ export default function App() {
       setRouteData(dailyRoutes);
       setIsGenerating(false);
       setIsSidebarOpen(false);
+      setIsViewingRoute(true);
+      setVisibleDay(null);
     }, 1500);
   };
 
   const clearRoute = () => {
     setRouteData([]);
-    setPreferences([]);
     setIsViewingRoute(false);
+    setVisibleDay(null);
   };
 
   return (
@@ -416,51 +436,17 @@ export default function App() {
                 {/* Sidebar Header */}
                 <div className="p-8 border-b border-slate-50 dark:border-slate-800 shrink-0">
                   <div className="flex items-center justify-between">
-                    <h2 className="text-[11px] font-black text-slate-300 dark:text-slate-600 uppercase tracking-[0.2em]">
-                      {isViewingRoute ? (lang === 'tr' ? 'GÜNLÜK ROTA' : 'DAILY ROUTE') : t.planner}
+                    <h2 className="text-[13px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-[0.2em]">
+                      {t.planner}
                     </h2>
-                    <button onClick={() => setIsSidebarOpen(false)} className="lg:hidden text-slate-400"><X size={20} /></button>
+                    <button onClick={() => setIsSidebarOpen(false)} className="text-slate-400 hover:text-red-500 transition-colors">
+                      <X size={20} />
+                    </button>
                   </div>
                 </div>
 
                 {/* Sidebar Scrollable Body */}
                 <div className="flex-1 overflow-y-auto custom-scrollbar relative">
-                  {isViewingRoute ? (
-                    <div className="p-8 space-y-10 pb-12">
-                      <div className="flex items-center gap-3">
-                        <div className="w-2 h-2 bg-blue-600 rounded-full shadow-[0_0_10px_#2563eb]" />
-                        <h3 className="text-xs font-black text-slate-800 dark:text-slate-200 uppercase tracking-[0.3em] font-black">
-                          {lang === 'tr' ? 'GÜNLÜK ROTA PLANINIZ' : 'YOUR DAILY ROUTE PLAN'}
-                        </h3>
-                      </div>
-                      {routeData.map((day, idx) => (
-                        <div key={idx} className="space-y-4 relative pl-6 border-l-2 border-slate-100 dark:border-slate-800">
-                          <div className="absolute -left-[5px] top-0 w-2 h-2 bg-slate-200 dark:bg-slate-700 rounded-full" />
-                          <div className="text-[10px] font-black text-blue-600 tracking-widest uppercase bg-blue-50 dark:bg-blue-900/30 px-3 py-1 rounded-full inline-block">{t.day} {day.day}</div>
-                          <div className="space-y-3">
-                            {day.venues.map((v, vIdx) => (
-                              <motion.div 
-                                key={vIdx} 
-                                initial={{ x: -20, opacity: 0 }}
-                                animate={{ x: 0, opacity: 1 }}
-                                transition={{ delay: vIdx * 0.1 }}
-                                className="group p-4 bg-white dark:bg-slate-800 border border-slate-100 dark:border-slate-700 rounded-3xl hover:border-blue-200 shadow-sm hover:shadow-2xl hover:shadow-blue-50 dark:hover:shadow-blue-900/20 transition-all cursor-pointer"
-                                onClick={() => setSelectedVenue(v)}
-                              >
-                                <div className="flex items-center gap-4">
-                                  <div className="w-8 h-8 bg-slate-900 dark:bg-slate-600 text-white text-[11px] font-black rounded-2xl flex items-center justify-center group-hover:bg-blue-600 transition-colors uppercase">{vIdx + 1}</div>
-                                  <div className="flex-1 overflow-hidden">
-                                    <div className="text-xs font-black text-slate-800 dark:text-slate-200 truncate group-hover:text-blue-600 transition-colors uppercase tracking-tight">{v.isim}</div>
-                                    <div className="text-[10px] text-slate-400 font-bold uppercase tracking-widest mt-0.5">{v.tur}</div>
-                                  </div>
-                                </div>
-                              </motion.div>
-                            ))}
-                          </div>
-                        </div>
-                      ))}
-                    </div>
-                  ) : (
                     <div className="p-8 space-y-8">
                       {routeData.length > 0 ? (
                         <div className="h-full flex flex-col items-center justify-center gap-10 py-12">
@@ -478,49 +464,50 @@ export default function App() {
                           </div>
                           
                           <div className="text-center space-y-4">
-                            <h3 className="text-xl font-black uppercase tracking-[0.2em] text-slate-800 dark:text-white">
-                              {lang === 'tr' ? 'ROTANIZ HAZIR!' : 'ROUTE READY!'}
-                            </h3>
+                          <h3 className="text-2xl font-black uppercase tracking-[0.2em] text-slate-900 dark:text-white">
+                            {lang === 'tr' ? 'ROTANIZ HAZIR!' : 'ROUTE READY!'}
+                          </h3>
                             <p className="text-[11px] font-bold text-slate-400 uppercase tracking-widest leading-relaxed max-w-[280px] mx-auto">
                               {lang === 'tr' ? 'Sizin için özel olarak hazırlanmış İstanbul macerasını keşfetmeye hazır mısınız?' : "Ready to discover the Istanbul adventure specially prepared for you?"}
                             </p>
                           </div>
 
-                          <button 
+                          {/* <button 
                             onClick={() => setIsViewingRoute(true)}
-                            className="w-full py-5 bg-slate-900 dark:bg-white text-white dark:text-slate-900 rounded-[2rem] font-black text-xs uppercase tracking-[0.2em] shadow-2xl hover:scale-105 active:scale-95 transition-all flex items-center justify-center gap-3"
+                            className="w-full py-5 bg-blue-600 text-white rounded-[2rem] font-bold text-base uppercase tracking-[0.15em] shadow-[0_20px_50px_rgba(37,99,235,0.3)] hover:scale-105 active:scale-95 transition-all flex items-center justify-center gap-3"
                           >
-                            <Calendar size={18} />
+                            <Calendar size={20} />
                             {lang === 'tr' ? 'GÜNLÜK ROTA PLANINIZ' : 'YOUR DAILY ROUTE PLAN'}
-                          </button>
+                          </button> */}
                         </div>
                       ) : (
                         <>
-                          {/* Tabs */}
-                          <div className="flex bg-slate-50 dark:bg-slate-800 p-1.5 rounded-2xl mb-8 border border-slate-100 dark:border-slate-700">
+                          <div className="flex bg-slate-100 dark:bg-slate-800 p-1.5 rounded-2xl mb-8 border border-slate-200 dark:border-slate-700">
                             <button 
                               onClick={() => {
                                 setActiveTab('otel');
-                                clearRoute();
+                                setRouteData([]);
+                                setIsViewingRoute(false);
                               }}
-                              className={cn("flex-1 py-3 text-[11px] font-black rounded-xl transition-all uppercase tracking-widest", activeTab === 'otel' ? "bg-white dark:bg-slate-600 shadow-xl text-blue-600" : "text-slate-400")}
+                              className={cn("flex-1 py-3.5 text-[13px] font-bold rounded-xl transition-all uppercase tracking-wider", activeTab === 'otel' ? "bg-white dark:bg-slate-700 shadow-xl text-blue-600" : "text-slate-500 hover:text-slate-700 dark:text-slate-400")}
                             >{t.hotelStart}</button>
                             <button 
                               onClick={() => {
                                 setActiveTab('semt');
-                                clearRoute();
+                                setRouteData([]);
+                                setIsViewingRoute(false);
                               }}
-                              className={cn("flex-1 py-3 text-[11px] font-black rounded-xl transition-all uppercase tracking-widest", activeTab === 'semt' ? "bg-white dark:bg-slate-600 shadow-xl text-blue-600" : "text-slate-400")}
+                              className={cn("flex-1 py-3.5 text-[13px] font-bold rounded-xl transition-all uppercase tracking-wider", activeTab === 'semt' ? "bg-white dark:bg-slate-700 shadow-xl text-blue-600" : "text-slate-500 hover:text-slate-700 dark:text-slate-400")}
                             >{t.districtStart}</button>
                           </div>
 
                           {activeTab === 'otel' ? (
                             <div className="space-y-2">
-                              <label className="text-[11px] font-black text-slate-400 uppercase tracking-widest flex items-center gap-2">
-                                <HotelIcon size={14} /> {t.hotelLabel}
-                              </label>
+                      <label className="text-[12px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-widest flex items-center gap-2">
+                        <HotelIcon size={16} /> {t.hotelLabel}
+                      </label>
                               <select 
-                                className="w-full p-4 bg-slate-50 dark:bg-slate-800 border border-slate-100 dark:border-slate-700 rounded-2xl text-sm font-bold outline-none transition-all appearance-none cursor-pointer text-slate-700 dark:text-slate-200"
+                                className="w-full p-4 bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-2xl text-sm font-bold outline-none transition-all appearance-none cursor-pointer text-slate-800 dark:text-slate-200"
                                 value={selectedHotel.isim}
                                 onChange={(e) => {
                                   const hotel = ISTANBUL_DATA.populer_oteller.find(h => h.isim === e.target.value);
@@ -528,22 +515,22 @@ export default function App() {
                                 }}
                               >
                                 {ISTANBUL_DATA.populer_oteller.map(h => (
-                                  <option key={h.isim} value={h.isim}>{h.isim}</option>
+                                  <option key={h.isim} value={h.isim}>{lang === 'tr' ? h.isim : (h.isim_en || h.isim)}</option>
                                 ))}
                               </select>
                             </div>
                           ) : (
                             <div className="space-y-2">
-                              <label className="text-[11px] font-black text-slate-400 uppercase tracking-widest flex items-center gap-2">
-                                <MapPin size={14} /> {t.districtLabel}
-                              </label>
+                      <label className="text-[12px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-widest flex items-center gap-2">
+                        <MapPin size={16} /> {t.districtLabel}
+                      </label>
                               <select 
-                                className="w-full p-4 bg-slate-50 dark:bg-slate-800 border border-slate-100 dark:border-slate-700 rounded-2xl text-sm font-bold outline-none transition-all appearance-none cursor-pointer text-slate-700 dark:text-slate-200"
+                                className="w-full p-4 bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-2xl text-sm font-bold outline-none transition-all appearance-none cursor-pointer text-slate-800 dark:text-slate-200"
                                 value={selectedDistrict}
                                 onChange={(e) => setSelectedDistrict(e.target.value)}
                               >
                                 {districts.map(d => (
-                                  <option key={d} value={d}>{d}</option>
+                                  <option key={d} value={d}>{(t as any).districts?.[d] || d}</option>
                                 ))}
                               </select>
                             </div>
@@ -551,29 +538,38 @@ export default function App() {
 
                           <div className="space-y-4">
                             <div className="flex justify-between items-center">
-                              <label className="text-[11px] font-black text-slate-400 uppercase tracking-widest">{t.duration}: <span className="text-blue-600">{duration} {t.days}</span></label>
+                              <label className="text-[13px] font-bold text-slate-600 dark:text-slate-400 uppercase tracking-widest">{t.duration}: <span className="text-blue-600 font-black">{duration} {t.days}</span></label>
                             </div>
                             <input 
                               type="range" min="1" max="7" 
-                              className="w-full h-2 bg-slate-100 dark:bg-slate-800 rounded-lg appearance-none cursor-pointer accent-blue-600"
+                              className="w-full h-3 bg-slate-200 dark:bg-slate-800 rounded-lg appearance-none cursor-pointer accent-blue-600"
                               value={duration}
                               onChange={(e) => setDuration(parseInt(e.target.value))}
                             />
                           </div>
 
                           <div className="space-y-4">
-                            <label className="text-[11px] font-black text-slate-400 uppercase tracking-widest flex items-center justify-between">
-                              {t.dailyPace}
-                              <span className="text-blue-600">{t.paceScale[pace - 3]} ({pace})</span>
+                            <label className="text-[13px] font-bold text-slate-600 dark:text-slate-400 uppercase tracking-widest flex items-center justify-between">
+                              <div className="flex items-center gap-2">
+                                {t.dailyPace}
+                                <div className="group relative">
+                                  <Info size={14} className="text-slate-400 hover:text-blue-600 transition-colors cursor-help" />
+                                  <div className="hidden group-hover:block absolute left-0 bottom-full mb-2 w-48 p-3 bg-slate-900 text-white text-[10px] font-medium leading-relaxed rounded-xl shadow-2xl z-[100] animate-in fade-in zoom-in duration-200">
+                                    {t.dailyPaceTooltip}
+                                    <div className="absolute top-full left-2 -mt-1 border-4 border-transparent border-t-slate-900" />
+                                  </div>
+                                </div>
+                              </div>
+                              <span className="text-blue-600 font-black">{t.paceScale[pace - 3]} ({pace})</span>
                             </label>
-                            <div className="flex bg-slate-100 dark:bg-slate-800 p-1 rounded-2xl border border-slate-200 dark:border-slate-700">
+                            <div className="flex bg-slate-100 dark:bg-slate-800 p-1.5 rounded-2xl border border-slate-200 dark:border-slate-700">
                               {[3, 4, 5, 6].map(p => (
                                 <button
                                   key={p}
                                   onClick={() => setPace(p)}
                                   className={cn(
-                                    "flex-1 py-3 text-[11px] font-black rounded-xl transition-all uppercase tracking-widest",
-                                    pace === p ? "bg-white dark:bg-slate-600 shadow-xl text-blue-600" : "text-slate-400 hover:text-slate-500"
+                                    "flex-1 py-3 text-[14px] font-bold rounded-xl transition-all uppercase tracking-wider",
+                                    pace === p ? "bg-white dark:bg-slate-700 shadow-xl text-blue-600" : "text-slate-500 hover:text-slate-700 dark:text-slate-400"
                                   )}
                                 >{p}</button>
                               ))}
@@ -581,15 +577,17 @@ export default function App() {
                           </div>
 
                           <div className="space-y-4">
-                            <label className="text-[11px] font-black text-slate-400 uppercase tracking-widest">{t.interests}</label>
+                            <label className="text-[12px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-widest">{t.interests}</label>
                             <div className="grid grid-cols-2 gap-3">
                               {prefOptions.map(pref => (
                                 <button
                                   key={pref}
                                   onClick={() => togglePreference(pref)}
                                   className={cn(
-                                    "p-4 rounded-2xl border text-[11px] font-black uppercase tracking-widest transition-all text-center",
-                                    preferences.includes(pref) ? "bg-blue-600 border-blue-600 text-white shadow-lg shadow-blue-100" : "bg-slate-50 dark:bg-slate-800 border-slate-100 dark:border-slate-700 text-slate-400 hover:border-slate-200"
+                                    "p-4 rounded-2xl border-2 text-[12px] font-bold uppercase tracking-wider transition-all text-center",
+                                    preferences.includes(pref) 
+                                      ? "bg-blue-600 border-blue-600 text-white shadow-lg shadow-blue-200 dark:shadow-none" 
+                                      : "bg-white dark:bg-slate-800 border-slate-100 dark:border-slate-700 text-slate-500 dark:text-slate-400 hover:border-blue-100 dark:hover:border-blue-900"
                                   )}
                                 >
                                   {(t.cats as any)[pref] || pref}
@@ -600,21 +598,20 @@ export default function App() {
                         </>
                       )}
                     </div>
-                  )}
                 </div>
 
                 {/* Fixed Action Area */}
                 <div className="p-6 border-t border-slate-100 dark:border-slate-800 bg-white/95 dark:bg-slate-900/95 backdrop-blur-xl z-20 shrink-0 shadow-[0_-15px_40px_rgba(0,0,0,0.05)]">
                   <div className="flex flex-col gap-3">
-                    {!isViewingRoute && (
-                      <button 
-                        onClick={drawSmartRoute}
-                        disabled={isGenerating}
-                        className={cn(
-                          "w-full py-5 text-white rounded-[2rem] font-black text-xs uppercase tracking-[0.2em] shadow-[0_20px_50px_rgba(37,99,235,0.4)] border-2 border-blue-400/30 transition-all flex items-center justify-center gap-3 relative overflow-hidden group",
-                          isGenerating ? "bg-blue-400 cursor-not-allowed" : "bg-blue-600 hover:bg-blue-700 hover:border-blue-400 hover:-translate-y-1 active:translate-y-0"
-                        )}
-                      >
+                    {routeData.length === 0 && (
+                        <button 
+                          onClick={drawSmartRoute}
+                          disabled={isGenerating}
+                          className={cn(
+                            "w-full py-6 text-white rounded-[2rem] font-bold text-base uppercase tracking-[0.2em] shadow-[0_25px_60px_rgba(37,99,235,0.4)] transition-all flex items-center justify-center gap-3 relative overflow-hidden group",
+                            isGenerating ? "bg-blue-400 cursor-not-allowed" : "bg-blue-600 hover:bg-blue-700 hover:-translate-y-1 active:translate-y-0"
+                          )}
+                        >
                         <div className={cn("absolute inset-0 bg-gradient-to-r from-transparent via-white/20 to-transparent -translate-x-full", !isGenerating && "group-hover:animate-[shimmer_2s_infinite]")} />
                         {isGenerating ? (
                           <>
@@ -624,7 +621,7 @@ export default function App() {
                         ) : (
                           <>
                             {t.createRoute}
-                            <Sparkles size={18} />
+                            <Sparkles size={20} />
                           </>
                         )}
                       </button>
@@ -633,9 +630,10 @@ export default function App() {
                     {routeData.length > 0 && (
                       <button 
                         onClick={clearRoute}
-                        className="w-full py-4 bg-slate-100 dark:bg-slate-800 text-slate-400 rounded-[2rem] font-black text-[10px] uppercase tracking-[0.2em] hover:bg-red-500 hover:text-white transition-all flex items-center justify-center gap-2"
+                        className="w-full py-4 text-slate-500 hover:text-red-500 text-[13px] font-bold uppercase tracking-widest transition-colors flex items-center justify-center gap-2"
                       >
-                        <X size={16} /> {lang === 'tr' ? 'ROTAYI TEMİZLE' : 'CLEAR ROUTE'}
+                        <i className="fas fa-trash-alt"></i>
+                        {lang === 'tr' ? 'ROTAYI TEMİZLE' : 'CLEAR ROUTE'}
                       </button>
                     )}
                   </div>
@@ -671,7 +669,7 @@ export default function App() {
                             key={pref}
                             onClick={() => togglePreference(pref)}
                             className={cn(
-                              "px-4 lg:px-6 py-2 lg:py-3 rounded-xl lg:rounded-2xl text-[9px] lg:text-[10px] font-black uppercase tracking-widest whitespace-nowrap transition-all flex items-center gap-2 lg:gap-3 border-2",
+                              "px-4 lg:px-6 py-2 lg:py-3 rounded-xl lg:rounded-2xl text-[10px] lg:text-[12px] font-bold uppercase tracking-wider whitespace-nowrap transition-all flex items-center gap-2 lg:gap-3 border-2",
                               preferences.includes(pref) 
                                 ? "bg-blue-600 text-white border-blue-500 shadow-[0_10px_25px_rgba(37,99,235,0.3)] scale-105" 
                                 : "bg-white/50 dark:bg-slate-800/50 text-slate-500 dark:text-slate-400 border-transparent hover:bg-white dark:hover:bg-slate-800"
@@ -702,7 +700,7 @@ export default function App() {
                     attribution='&copy; CARTO' 
                   />
                   
-                  {ISTANBUL_DATA.turistik_mekanlar.filter(v => {
+                  {routeData.length === 0 && ISTANBUL_DATA.turistik_mekanlar.filter(v => {
                     if (preferences.length === 0) return true;
                     
                     // Find venue's icon
@@ -722,47 +720,38 @@ export default function App() {
                       position={[v.koordinat.enlem, v.koordinat.boylam]}
                       icon={createCategoryIcon(v.tur)}
                       eventHandlers={{ click: () => setSelectedVenue(v) }}
-                    >
-                      <Popup>
-                        <div className="w-48 overflow-hidden rounded-xl">
-                          <WikiImage title={v.isim} fallback={(v as any).gorsel || DEFAULT_IMAGE} className="w-full h-24 mb-2" />
-                          <div className="font-bold text-slate-800 leading-tight mb-1">{v.isim}</div>
-                          <div className="text-[10px] text-blue-600 font-black uppercase tracking-widest mb-2">{v.tur}</div>
-                          <div className="text-[10px] text-slate-500 leading-relaxed italic">"{v.kisa_tarihce}"</div>
-                        </div>
-                      </Popup>
-                    </Marker>
+                    />
                   ))}
 
                   {/* Start Point Marker (Hotel or District) */}
-                  {(routeData.length > 0 || (activeTab === 'otel' && selectedHotel) || (activeTab === 'semt' && selectedDistrict)) && (
+                  {(routeData.length > 0 || (activeTab === 'otel' && selectedHotel) || (activeTab === 'semt' && selectedDistrict && DISTRICT_COORDS[selectedDistrict])) && (
                     <Marker 
-                      position={activeTab === 'otel' ? [selectedHotel.koordinat.enlem, selectedHotel.koordinat.boylam] : [DISTRICT_COORDS[selectedDistrict].lat, DISTRICT_COORDS[selectedDistrict].lng]}
+                      position={activeTab === 'otel' ? [selectedHotel.koordinat.enlem, selectedHotel.koordinat.boylam] : [DISTRICT_COORDS[selectedDistrict]?.lat || 41.0082, DISTRICT_COORDS[selectedDistrict]?.lng || 28.9784]}
                       zIndexOffset={5000}
                       icon={L.divIcon({
                         className: 'start-marker',
-                        html: `<div style="background-color: #f59e0b; color: white; width: 56px; height: 56px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 28px; border: 4px solid white; box-shadow: 0 4px 20px rgba(245,158,11,0.6);"><i class="fa-solid fa-house-chimney"></i></div>`,
-                        iconSize: [56, 56],
-                        iconAnchor: [28, 28],
+                        html: `
+                          <div class="user-location-marker" style="position: relative; display: flex; flex-direction: column; align-items: center;">
+                            <div style="background-color: #3b82f6; color: white; width: 60px; height: 60px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 30px; border: 4px solid white; box-shadow: 0 8px 24px rgba(59,130,246,0.6); z-index: 2; transition: all 0.3s ease;">
+                              <i class="fa-solid fa-hotel"></i>
+                            </div>
+                            <div style="position: absolute; bottom: -28px; background: #3b82f6; color: white; padding: 4px 12px; border-radius: 12px; font-size: 9px; font-weight: 900; white-space: nowrap; box-shadow: 0 4px 12px rgba(0,0,0,0.2); border: 2px solid white; z-index: 3; text-transform: uppercase; letter-spacing: 0.1em;">
+                              ${lang === 'tr' ? 'KONAKLAMA' : 'YOUR STAY'}
+                            </div>
+                            <div style="position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); width: 80px; height: 80px; border-radius: 50%; background: #3b82f6; opacity: 0.3; z-index: 1;"></div>
+                          </div>
+                        `,
+                        iconSize: [60, 60],
+                        iconAnchor: [30, 30],
                       })}
-                    >
-                      <Popup>
-                        <div className="w-48 overflow-hidden rounded-xl">
-                          {activeTab === 'otel' && (
-                            <WikiImage 
-                              title={selectedHotel.isim} 
-                              fallback={(selectedHotel as any).gorsel || DEFAULT_IMAGE} 
-                              className="w-full h-24 mb-2" 
-                            />
-                          )}
-                          <div className="text-[10px] text-amber-600 font-black uppercase tracking-widest mb-1">{activeTab === 'otel' ? t.hotelLabel : t.districtLabel}</div>
-                          <div className="font-bold text-slate-800 leading-tight">{activeTab === 'otel' ? selectedHotel.isim : selectedDistrict}</div>
-                        </div>
-                      </Popup>
-                    </Marker>
+                      eventHandlers={{
+                        click: () => setSelectedVenue(null) // Close large modal if clicking accommodation
+                      }}
+                    />
                   )}
 
                   {routeData.map((day, dIdx) => {
+                    if (visibleDay !== null && day.day !== visibleDay) return null;
                     const positions = day.venues.map(v => [v.koordinat.enlem, v.koordinat.boylam] as [number, number]);
                     
                     return (
@@ -793,25 +782,19 @@ export default function App() {
                           <Marker 
                             key={`${dIdx}-${vIdx}`}
                             position={[v.koordinat.enlem, v.koordinat.boylam]}
-                            icon={createCategoryIcon(v.tur, vIdx + 1)}
+                            icon={createCategoryIcon(v.tur, `${dIdx + 1}. ${t.day} - ${vIdx + 1}`, dayColors[dIdx % dayColors.length])}
                             zIndexOffset={2000}
-                          >
-                            <Popup>
-                              <div className="w-48 overflow-hidden rounded-xl">
-                                <WikiImage title={v.isim} fallback={(v as any).gorsel || DEFAULT_IMAGE} className="w-full h-24 mb-2" />
-                                <div className="font-bold text-slate-800 leading-tight mb-1">{v.isim}</div>
-                                <div className="text-[10px] text-blue-600 font-black uppercase tracking-widest mb-2">{v.tur}</div>
-                                <div className="text-[10px] text-slate-500 leading-relaxed italic">"{v.kisa_tarihce}"</div>
-                              </div>
-                            </Popup>
-                          </Marker>
+                            eventHandlers={{
+                              click: () => setSelectedVenue(v)
+                            }}
+                          />
                         ))}
                       </React.Fragment>
                     );
                   })}
 
-                  <MapUpdater center={selectedVenue ? [selectedVenue.koordinat.enlem, selectedVenue.koordinat.boylam] : [41.015, 28.97]} />
-                  <RouteFitter routeData={routeData} />
+                  <MapUpdater center={selectedVenue ? [selectedVenue.koordinat.enlem, selectedVenue.koordinat.boylam] : null} />
+                  <RouteFitter routeData={visibleDay !== null ? routeData.filter(d => d.day === visibleDay) : routeData} />
                 </MapContainer>
 
                 {/* Venue Detail Overlay */}
@@ -827,14 +810,18 @@ export default function App() {
                       <div className="bg-white dark:bg-slate-900 rounded-[3rem] shadow-[0_30px_60px_-12px_rgba(0,0,0,0.4)] overflow-hidden border border-slate-100 dark:border-slate-800 flex flex-col md:flex-row h-auto md:h-72">
                         <div className="w-full md:w-1/2 h-48 md:h-full relative group">
                           <WikiImage 
-                            title={selectedVenue.isim} 
+                            title={lang === 'tr' ? selectedVenue.isim : (selectedVenue.isim_en || selectedVenue.isim)} 
                             fallback={(selectedVenue as any).gorsel || DEFAULT_IMAGE} 
                             className="w-full h-full transition-transform duration-700 group-hover:scale-110" 
                           />
                           <div className="absolute inset-0 bg-gradient-to-t from-black/80 to-transparent" />
                           <div className="absolute bottom-8 left-8 right-8">
-                             <div className="text-[10px] text-blue-300 font-black uppercase tracking-widest mb-1">{selectedVenue.tur}</div>
-                             <div className="text-white text-2xl font-black uppercase tracking-tight leading-tight drop-shadow-lg">{selectedVenue.isim}</div>
+                             <div className="text-[10px] text-blue-300 font-black uppercase tracking-widest mb-1">
+                               {lang === 'tr' ? selectedVenue.tur : (selectedVenue.tur_en || selectedVenue.tur)}
+                             </div>
+                             <div className="text-white text-2xl font-black uppercase tracking-tight leading-tight drop-shadow-lg">
+                               {lang === 'tr' ? selectedVenue.isim : (selectedVenue.isim_en || selectedVenue.isim)}
+                             </div>
                           </div>
                         </div>
                         <div className="flex-1 p-8 flex flex-col justify-between relative bg-white dark:bg-slate-900">
@@ -844,17 +831,20 @@ export default function App() {
                           
                           <div className="pr-4">
                             <p className="text-sm text-slate-500 dark:text-slate-400 font-medium leading-relaxed italic line-clamp-3">
-                              "{selectedVenue.kisa_tarihce}"
+                              "{lang === 'tr' ? selectedVenue.kisa_tarihce : (selectedVenue.kisa_tarihce_en || selectedVenue.kisa_tarihce)}"
                             </p>
                           </div>
                           
                           <div className="flex items-center gap-3 mt-6">
-                            <button className="flex-1 bg-blue-600 text-white py-4 rounded-2xl font-black text-[10px] uppercase tracking-widest hover:bg-blue-700 transition-all flex items-center justify-center gap-2">
-                               <Compass size={14} /> {lang === 'tr' ? 'YOL TARİFİ' : 'DIRECTIONS'}
-                            </button>
-                            <button className="bg-slate-50 dark:bg-slate-800 p-4 rounded-2xl text-slate-400 hover:text-blue-600 transition-all border border-slate-100 dark:border-slate-700">
-                              <Navigation size={18} />
-                            </button>
+                              <button 
+                                onClick={() => {
+                                  const url = `https://www.google.com/maps/dir/?api=1&destination=${selectedVenue.koordinat.enlem},${selectedVenue.koordinat.boylam}`;
+                                  window.open(url, '_blank');
+                                }}
+                                className="flex-1 bg-blue-600 text-white h-14 rounded-2xl font-black text-xs uppercase tracking-widest hover:bg-blue-700 transition-all flex items-center justify-center gap-2 shadow-lg shadow-blue-500/30"
+                              >
+                                 <Compass size={16} /> <span className="inline-block">{t.directions}</span>
+                              </button>
                           </div>
                         </div>
                       </div>
@@ -869,9 +859,100 @@ export default function App() {
                     className="absolute top-6 lg:top-10 left-6 lg:left-10 z-[1100] bg-white dark:bg-slate-900 px-6 lg:px-8 py-3 lg:py-4 rounded-2xl lg:rounded-3xl shadow-2xl border border-slate-50 dark:border-slate-800 flex items-center gap-3 lg:gap-4 hover:scale-105 transition-all text-blue-600 group active:scale-95"
                   >
                     <div className="w-2 h-2 lg:w-2.5 lg:h-2.5 bg-blue-600 rounded-full animate-pulse shadow-[0_0_10px_#2563eb]" />
-                    <span className="text-[9px] lg:text-[11px] font-black uppercase tracking-[0.2em]">{isViewingRoute ? (lang === 'tr' ? 'GÜNLÜK ROTA' : 'DAILY ROUTE') : t.planner}</span>
+                    <span className="text-[9px] lg:text-[11px] font-black uppercase tracking-[0.2em]">{t.planner}</span>
                   </button>
                 )}
+
+                {/* Right Sidebar for Route Itinerary */}
+                <AnimatePresence>
+                  {isViewingRoute && (
+                    <motion.aside 
+                      initial={{ x: 420 }}
+                      animate={{ x: isRightSidebarOpen ? 0 : 420 }}
+                      className="absolute top-0 right-0 h-full w-[420px] bg-white/95 dark:bg-slate-900/95 backdrop-blur-xl border-l border-slate-100 dark:border-slate-800 z-[1001] shadow-2xl flex"
+                    >
+                      {/* Toggle Handle */}
+                      <button 
+                        onClick={() => setIsRightSidebarOpen(!isRightSidebarOpen)}
+                        className="absolute right-full top-24 w-12 h-12 bg-white dark:bg-slate-900 border border-slate-100 dark:border-slate-800 rounded-l-2xl flex items-center justify-center text-blue-600 shadow-xl"
+                      >
+                        {isRightSidebarOpen ? <ChevronRight size={20} /> : <div className="flex items-center gap-2 pr-2"><div className="w-2 h-2 bg-blue-600 rounded-full animate-pulse" /><span className="text-[10px] font-black uppercase whitespace-nowrap">{lang === 'tr' ? 'PLANI GÖR' : 'VIEW PLAN'}</span></div>}
+                      </button>
+
+                      <div className="flex-1 flex flex-col w-[420px]">
+                        <div className="p-8 border-b border-slate-100 dark:border-slate-800 shrink-0">
+                          <div className="flex items-center justify-between mb-6">
+                            <h2 className="text-[13px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-[0.2em]">
+                              {lang === 'tr' ? 'GÜNLÜK ROTA PLANI' : 'DAILY ROUTE PLAN'}
+                            </h2>
+                            <button onClick={() => setIsViewingRoute(false)} className="text-slate-400 hover:text-red-500 transition-colors">
+                              <X size={20} />
+                            </button>
+                          </div>
+
+                          {/* Day Filter Bubbles */}
+                          <div className="flex flex-wrap gap-2">
+                            <button 
+                              onClick={() => setVisibleDay(null)}
+                              className={cn(
+                                "px-4 py-2 rounded-full text-[10px] font-black uppercase tracking-widest transition-all",
+                                visibleDay === null ? "bg-blue-600 text-white shadow-lg" : "bg-slate-100 dark:bg-slate-800 text-slate-400 hover:text-blue-600"
+                              )}
+                            >
+                              {lang === 'tr' ? 'TÜMÜ' : 'ALL'}
+                            </button>
+                            {routeData.map((day) => (
+                              <button 
+                                key={day.day}
+                                onClick={() => setVisibleDay(day.day)}
+                                className={cn(
+                                  "px-4 py-2 rounded-full text-[10px] font-black uppercase tracking-widest transition-all",
+                                  visibleDay === day.day ? "bg-blue-600 text-white shadow-lg" : "bg-slate-100 dark:bg-slate-800 text-slate-400 hover:text-blue-600"
+                                )}
+                              >
+                                {t.day} {day.day}
+                              </button>
+                            ))}
+                          </div>
+                        </div>
+
+                        <div className="flex-1 overflow-y-auto custom-scrollbar p-8 space-y-10">
+                          {routeData.filter(d => visibleDay === null || d.day === visibleDay).map((day, idx) => (
+                            <div key={day.day} className="space-y-4 relative pl-6 border-l-2 border-slate-100 dark:border-slate-800">
+                              <div className="absolute -left-[5px] top-0 w-2 h-2 bg-slate-200 dark:bg-slate-700 rounded-full" />
+                              <div className="text-[10px] font-black text-blue-600 tracking-widest uppercase bg-blue-50 dark:bg-blue-900/30 px-3 py-1 rounded-full inline-block">{t.day} {day.day}</div>
+                              <div className="space-y-3">
+                                {day.venues.map((v, vIdx) => (
+                                  <motion.div 
+                                    key={vIdx} 
+                                    initial={{ x: 20, opacity: 0 }}
+                                    animate={{ x: 0, opacity: 1 }}
+                                    className="group p-4 bg-white dark:bg-slate-800 border border-slate-100 dark:border-slate-700 rounded-3xl hover:border-blue-200 shadow-sm hover:shadow-2xl hover:shadow-blue-50 dark:hover:shadow-blue-900/20 transition-all cursor-pointer"
+                                    onClick={() => setSelectedVenue(v)}
+                                  >
+                                    <div className="flex items-center gap-4">
+                                      <div className="w-fit h-8 px-3 bg-slate-900 dark:bg-slate-600 text-white text-[10px] font-black rounded-xl flex items-center justify-center group-hover:bg-blue-600 transition-colors uppercase whitespace-nowrap">
+                                        {day.day}. {t.day} - {vIdx + 1}
+                                      </div>
+                                    <div className="flex-1 overflow-hidden">
+                                      <div className="text-xs font-black text-slate-800 dark:text-slate-200 truncate group-hover:text-blue-600 transition-colors uppercase tracking-tight">
+                                        {lang === 'tr' ? v.isim : (v.isim_en || v.isim)}
+                                      </div>
+                                      <div className="text-[10px] text-slate-400 font-bold uppercase tracking-widest mt-0.5">
+                                        {lang === 'tr' ? v.tur : (v.tur_en || v.tur)}
+                                      </div>
+                                    </div>
+                                    </div>
+                                  </motion.div>
+                                ))}
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    </motion.aside>
+                  )}
+                </AnimatePresence>
               </div>
             </div>
 
