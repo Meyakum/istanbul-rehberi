@@ -1853,15 +1853,7 @@ export default function App() {
               </div>
             </div>
 
-            {/* Footer */}
-            <footer className={cn("h-14 border-t flex items-center px-4 md:px-10 justify-between shrink-0 z-50 transition-colors", theme === 'dark' ? "bg-slate-900 border-slate-800" : "bg-white border-slate-50")}>
-              <span className="text-[9px] md:text-[10px] font-black text-slate-300 dark:text-slate-600 uppercase tracking-widest">© 2024 {t.title} v3.1</span>
-              <div className="flex items-center gap-4 sm:gap-8 text-[9px] md:text-[10px] font-black uppercase tracking-[0.2em] text-slate-300 dark:text-slate-600">
-                <span className="flex items-center gap-2"><div className="w-2 h-2 bg-green-500 rounded-full shadow-[0_0_8px_#22c55e]" /> {t.serverActive}</span>
-                <span className="opacity-20 text-slate-400 hidden sm:inline">|</span>
-                <span className="text-slate-400 dark:text-slate-600 hidden sm:inline">{t.dataStandards}</span>
-              </div>
-            </footer>
+
           </motion.div>
         )}
       </AnimatePresence>
