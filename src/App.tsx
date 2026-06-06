@@ -1238,6 +1238,30 @@ export default function App() {
             exit={{ opacity: 0 }}
             className="fixed inset-0 z-[2000] flex flex-col items-center justify-center landing-overlay text-white text-center px-6"
           >
+            {/* Elegant, highly integrated Language Toggle for Landing Screen */}
+            <div className="absolute top-6 right-6 z-[2100]">
+              <div className="flex bg-white/10 backdrop-blur-md p-1 rounded-xl border border-white/20 shadow-lg">
+                <button 
+                  onClick={() => setLang('tr')} 
+                  className={cn(
+                    "px-3 py-1.5 text-[10px] sm:text-xs font-black rounded-lg transition-all", 
+                    lang === 'tr' ? "bg-white text-blue-600 shadow-sm" : "text-white/80 hover:text-white"
+                  )}
+                >
+                  TR
+                </button>
+                <button 
+                  onClick={() => setLang('en')} 
+                  className={cn(
+                    "px-3 py-1.5 text-[10px] sm:text-xs font-black rounded-lg transition-all", 
+                    lang === 'en' ? "bg-white text-blue-600 shadow-sm" : "text-white/80 hover:text-white"
+                  )}
+                >
+                  EN
+                </button>
+              </div>
+            </div>
+
             <div className="absolute inset-0 opacity-40 pointer-events-none">
               <img src="https://images.unsplash.com/photo-1524231757912-21f4fe3a7200?q=80&w=2071&auto=format&fit=crop" className="w-full h-full object-cover" />
             </div>
@@ -1276,14 +1300,14 @@ export default function App() {
             className="flex flex-col h-screen"
           >
             {/* Header */}
-            {!isExplorerMode && (
-              <nav className={cn("h-16 lg:h-20 border-b flex items-center px-4 lg:px-10 justify-between shrink-0 z-50 shadow-sm transition-colors", theme === 'dark' ? "bg-slate-900 border-slate-800" : "bg-white border-slate-100")}>
-                <div className="flex items-center gap-2 lg:gap-3 cursor-pointer group" onClick={() => setActiveScreen('landing')}>
-                  <div className="w-8 h-8 lg:w-10 lg:h-10 bg-blue-600 rounded-xl lg:rounded-2xl flex items-center justify-center text-white shadow-lg shadow-blue-200 group-hover:scale-110 transition-transform">
+            {(!isExplorerMode || true) && (
+              <nav className={cn("h-16 lg:h-20 border-b flex items-center px-2.5 sm:px-6 lg:px-10 justify-between shrink-0 z-50 shadow-sm transition-colors", theme === 'dark' ? "bg-slate-900 border-slate-800" : "bg-white border-slate-100", isExplorerMode ? "flex lg:hidden" : "flex")}>
+                <div className="flex items-center gap-1.5 sm:gap-3 cursor-pointer group" onClick={() => setActiveScreen('landing')}>
+                  <div className="w-8 h-8 lg:w-10 lg:h-10 bg-blue-600 rounded-xl lg:rounded-2xl flex items-center justify-center text-white shadow-lg shadow-blue-200 group-hover:scale-110 transition-transform shrink-0">
                     <div className="w-4 h-4 lg:w-5 lg:h-5 border-2 border-white rotate-45" />
                   </div>
-                  <span className={cn("text-lg lg:text-2xl font-black tracking-tighter uppercase whitespace-nowrap", theme === 'dark' ? "text-white" : "text-slate-900")}>
-                    {lang === 'tr' ? <>İstanbul <span className="text-blue-600 hidden sm:inline">Rehberi</span></> : <>Istanbul <span className="text-blue-600 hidden sm:inline">Guide</span></>}
+                  <span className={cn("text-xs min-[360px]:text-sm sm:text-lg lg:text-2xl font-black tracking-tighter uppercase whitespace-nowrap", theme === 'dark' ? "text-white" : "text-slate-900")}>
+                    {lang === 'tr' ? <>İstanbul <span className="text-blue-600">Rehberi</span></> : <>Istanbul <span className="text-blue-600">Guide</span></>}
                   </span>
                 </div>
                 
@@ -1304,22 +1328,22 @@ export default function App() {
                   <button onClick={() => setShowHowItWorks(true)} className="hover:text-blue-600 dark:hover:text-blue-400 transition-colors uppercase">{t.howItWorks}</button>
                 </div>
 
-                <div className="flex items-center gap-4">
-                  <div className="flex bg-slate-100 dark:bg-slate-800 p-1 rounded-xl">
-                    <button onClick={() => setLang('tr')} className={cn("px-3 py-1.5 text-[10px] font-black rounded-lg transition-all", lang === 'tr' ? "bg-white dark:bg-slate-600 shadow-sm text-blue-600" : "text-slate-400")}>TR</button>
-                    <button onClick={() => setLang('en')} className={cn("px-3 py-1.5 text-[10px] font-black rounded-lg transition-all", lang === 'en' ? "bg-white dark:bg-slate-600 shadow-sm text-blue-600" : "text-slate-400")}>EN</button>
+                <div className="flex items-center gap-1.5 sm:gap-4 shrink-0">
+                  <div className="flex bg-slate-100 dark:bg-slate-800 p-0.5 min-[375px]:p-1 rounded-lg min-[375px]:rounded-xl">
+                    <button onClick={() => setLang('tr')} className={cn("px-1.5 min-[360px]:px-2.5 min-[375px]:px-3 py-1 text-[9px] min-[360px]:text-[10px] font-black rounded-md min-[375px]:rounded-lg transition-all", lang === 'tr' ? "bg-white dark:bg-slate-600 shadow-sm text-blue-600" : "text-slate-400 hover:text-slate-600 dark:hover:text-slate-300")}>TR</button>
+                    <button onClick={() => setLang('en')} className={cn("px-1.5 min-[360px]:px-2.5 min-[375px]:px-3 py-1 text-[9px] min-[360px]:text-[10px] font-black rounded-md min-[375px]:rounded-lg transition-all", lang === 'en' ? "bg-white dark:bg-slate-600 shadow-sm text-blue-600" : "text-slate-400 hover:text-slate-600 dark:hover:text-slate-300")}>EN</button>
                   </div>
                   <button 
                     onClick={() => setTheme(theme === 'light' ? 'dark' : 'light')}
-                    className="p-3 bg-slate-100 dark:bg-slate-800 rounded-xl text-slate-500 hover:text-blue-600 transition-all"
+                    className="hidden lg:flex p-3 bg-slate-100 dark:bg-slate-800 rounded-xl text-slate-500 hover:text-blue-600 transition-all"
                   >
                     {theme === 'light' ? <Moon size={20} /> : <Sun size={20} />}
                   </button>
                   <button 
-                    className="lg:hidden p-3 bg-slate-100 dark:bg-slate-800 rounded-xl text-slate-800 dark:text-white active:scale-95 transition-transform" 
+                    className="lg:hidden p-2 min-[375px]:p-2.5 bg-slate-100 dark:bg-slate-800 rounded-xl text-slate-800 dark:text-white active:scale-95 transition-transform shrink-0" 
                     onClick={() => setIsMobileNavOpen(true)}
                   >
-                    <Menu size={24} />
+                    <Menu size={20} />
                   </button>
                 </div>
               </nav>
@@ -1355,7 +1379,7 @@ export default function App() {
 
                 {/* Sidebar Scrollable Body */}
                 <div className="flex-1 overflow-y-auto custom-scrollbar relative">
-                    <div className="p-6 md:p-8 space-y-6 md:space-y-8">
+                    <div className="p-6 md:p-8 pb-32 space-y-6 md:space-y-8">
                       {routeData.length > 0 ? (
                         <div className="h-full flex flex-col items-center justify-center gap-10 py-12">
                           <div className="relative">
@@ -1694,12 +1718,12 @@ export default function App() {
                           setIsExplorerMode(false);
                           setIsSidebarOpen(true);
                         }}
-                        className="shrink-0 w-10 h-10 lg:w-14 lg:h-14 bg-slate-900 dark:bg-white text-white dark:text-slate-900 rounded-full flex items-center justify-center transition-all hover:scale-105 active:scale-95 shadow-xl"
+                        className="shrink-0 hidden lg:flex w-10 h-10 lg:w-14 lg:h-14 bg-slate-900 dark:bg-white text-white dark:text-slate-900 rounded-full items-center justify-center transition-all hover:scale-105 active:scale-95 shadow-xl"
                       >
                         <i className="fas fa-arrow-left text-sm lg:text-lg"></i>
                       </button>
                       
-                      <div className="w-px h-6 lg:h-10 bg-slate-200/50 dark:bg-slate-700/50 mx-1 hidden sm:block" />
+                      <div className="w-px h-6 lg:h-10 bg-slate-200/50 dark:bg-slate-700/50 mx-1 hidden lg:block" />
                       
                       <div className="flex-1 flex items-center gap-1.5 overflow-hidden">
                         {/* Left Scroll Button */}
@@ -1906,9 +1930,17 @@ export default function App() {
                       initial={{ y: 100, opacity: 0 }}
                       animate={{ y: 0, opacity: 1 }}
                       exit={{ y: 100, opacity: 0 }}
-                      className="fixed bottom-16 lg:bottom-20 left-1/2 -translate-x-1/2 w-[92%] max-w-xl z-[1550]"
+                      className="fixed bottom-[116px] lg:bottom-20 left-1/2 -translate-x-1/2 w-[92%] max-w-xl z-[1550]"
                     >
-                      <div className="bg-white dark:bg-slate-900 rounded-[2rem] md:rounded-[3rem] shadow-[0_30px_60px_-12px_rgba(0,0,0,0.4)] overflow-hidden border border-slate-100 dark:border-slate-800 flex flex-col md:flex-row h-auto md:h-72">
+                      <div className="bg-white dark:bg-slate-900 rounded-[2rem] md:rounded-[3rem] shadow-[0_30px_60px_-12px_rgba(0,0,0,0.4)] overflow-hidden border border-slate-100 dark:border-slate-800 flex flex-col md:flex-row h-auto md:h-72 relative">
+                        {/* Global Close Button (Always top-right of the entire card) */}
+                        <button 
+                          onClick={() => setSelectedVenue(null)} 
+                          className="absolute right-4 top-4 md:right-6 md:top-6 h-8 w-8 rounded-full bg-slate-950/80 dark:bg-slate-800/90 text-white flex items-center justify-center shadow-[0_4px_12px_rgba(0,0,0,0.3)] hover:shadow-[0_4px_16px_rgba(0,0,0,0.45)] active:scale-95 transition-all border border-slate-700/50 hover:scale-110 z-20"
+                        >
+                          <X size={15} strokeWidth={3} className="text-white" />
+                        </button>
+
                         <div className="w-full md:w-1/2 h-44 md:h-full relative group">
                           <VenueImage 
                             src={selectedVenue.gorsel || ""} 
@@ -1926,12 +1958,6 @@ export default function App() {
                           </div>
                         </div>
                         <div className="flex-1 p-6 md:p-8 flex flex-col justify-between relative bg-white dark:bg-slate-900">
-                          <button 
-                            onClick={() => setSelectedVenue(null)} 
-                            className="absolute right-6 top-6 h-8 w-8 rounded-full bg-slate-950/80 dark:bg-slate-800/90 text-white flex items-center justify-center shadow-[0_0_15px_rgba(255,255,255,0.45)] hover:shadow-[0_0_20px_rgba(255,255,255,0.85)] active:scale-95 transition-all border border-slate-700/50 hover:scale-110 z-10"
-                          >
-                            <X size={15} strokeWidth={3} className="text-white drop-shadow-[0_0_5px_rgba(255,255,255,0.95)]" />
-                          </button>
                           
                           <div className="pr-12 md:pr-14">
                             <p className="text-sm text-slate-500 dark:text-slate-400 font-medium leading-relaxed italic line-clamp-3">
@@ -2090,7 +2116,7 @@ export default function App() {
                           </div>
                         </div>
 
-                        <div className="flex-1 overflow-y-auto custom-scrollbar p-6 md:p-8 space-y-8 md:space-y-10">
+                        <div className="flex-1 overflow-y-auto custom-scrollbar p-6 md:p-8 pb-32 space-y-8 md:space-y-10">
                           {routeData.filter(d => visibleDay === null || d.day === visibleDay).map((day, idx) => (
                             <div key={day.day} className="space-y-4 relative pl-6 border-l-2 border-slate-100 dark:border-slate-800">
                               <div className="absolute -left-[5px] top-0 w-2 h-2 bg-slate-200 dark:bg-slate-700 rounded-full" />
@@ -2357,6 +2383,7 @@ export default function App() {
                 <button 
                   onClick={() => {
                     setIsSidebarOpen(true);
+                    setIsRightSidebarOpen(false);
                     setIsExplorerMode(false);
                     setIsMobileNavOpen(false);
                   }}
@@ -2374,6 +2401,30 @@ export default function App() {
                     </div>
                   </div>
                 </button>
+
+                {routeData.length > 0 && (
+                  <button 
+                    onClick={() => {
+                      setIsSidebarOpen(false);
+                      setIsRightSidebarOpen(true);
+                      setIsExplorerMode(false);
+                      setIsMobileNavOpen(false);
+                    }}
+                    className="flex items-center gap-4 p-4 rounded-2xl bg-emerald-50 hover:bg-emerald-100 dark:bg-emerald-950/20 dark:hover:bg-emerald-900/30 text-left transition-all group border border-transparent hover:border-emerald-100 dark:hover:border-emerald-900/40"
+                  >
+                    <div className="w-10 h-10 rounded-xl bg-emerald-500 text-slate-950 flex items-center justify-center transition-all">
+                      <i className="fa-solid fa-calendar-day text-sm" />
+                    </div>
+                    <div>
+                      <div className="text-xs font-black uppercase tracking-widest text-emerald-600 dark:text-emerald-400">
+                        {lang === 'tr' ? 'GÜNLÜK PLANI GÖR' : 'VIEW ITINERARY'}
+                      </div>
+                      <div className="text-[10px] text-slate-400 mt-0.5">
+                        {lang === 'tr' ? 'Günlük gezi planı detayları' : 'See daily itinerary breakdown'}
+                      </div>
+                    </div>
+                  </button>
+                )}
 
                 <button 
                   onClick={() => {
@@ -2570,81 +2621,124 @@ export default function App() {
       </AnimatePresence>
 
       {/* Unified Mobile Bottom Navigation Floating Action Bar */}
-      {activeScreen === 'app' && !isSidebarOpen && !isMobileNavOpen && (
-        <div className="lg:hidden fixed bottom-6 left-1/2 -translate-x-1/2 z-[1150] w-[92%] max-w-sm">
+      {activeScreen === 'app' && !isMobileNavOpen && (
+        <div className="lg:hidden fixed bottom-6 left-1/2 -translate-x-1/2 z-[3100] w-[92%] max-w-sm">
           <motion.div 
             initial={{ y: 50, opacity: 0 }}
             animate={{ y: 0, opacity: 1 }}
-            className="bg-slate-950/95 dark:bg-slate-950/95 backdrop-blur-3xl px-6 py-3 rounded-3xl shadow-[0_20px_50px_rgba(0,0,0,0.5)] border border-slate-800 flex items-center justify-around gap-2"
+            className="bg-slate-950/95 dark:bg-slate-950/95 backdrop-blur-3xl px-6 py-3 rounded-2xl shadow-[0_20px_50px_rgba(0,0,0,0.6)] border border-slate-800/80 flex items-center justify-around gap-2"
           >
             {/* Route Planner Button */}
-            <button
-              onClick={() => {
-                setIsSidebarOpen(true);
-                setIsRightSidebarOpen(false);
-              }}
-              className="flex-1 flex flex-col items-center justify-center text-slate-400 hover:text-blue-400 transition-all active:scale-95 py-1"
-            >
-              <div className="w-9 h-9 rounded-full bg-blue-500/10 text-blue-400 flex items-center justify-center mb-1">
-                <Calendar size={16} />
-              </div>
-              <span className="text-[9px] font-black uppercase tracking-widest text-slate-300">
-                {lang === 'tr' ? 'PLANLAYICI' : 'PLANNER'}
-              </span>
-            </button>
+            {(() => {
+              const isPlannerActive = isSidebarOpen && !isRightSidebarOpen && !isExplorerMode;
+              return (
+                <button
+                  onClick={() => {
+                    setIsExplorerMode(false);
+                    setIsSidebarOpen(true);
+                    setIsRightSidebarOpen(false);
+                  }}
+                  className="flex-1 flex flex-col items-center justify-center transition-all active:scale-95 py-1"
+                >
+                  <div className={cn(
+                    "w-9 h-9 rounded-full flex items-center justify-center mb-1 transition-all duration-300",
+                    isPlannerActive 
+                      ? "bg-blue-600 text-white shadow-[0_0_15px_rgba(37,99,235,0.5)] transform scale-110" 
+                      : "bg-blue-500/10 text-blue-400 hover:bg-blue-500/20"
+                  )}>
+                    <Calendar size={16} />
+                  </div>
+                  <span className={cn(
+                    "text-[9px] uppercase tracking-widest transition-colors duration-300",
+                    isPlannerActive ? "text-blue-400 font-black" : "text-slate-400 font-bold"
+                  )}>
+                    {lang === 'tr' ? 'PLANLAYICI' : 'PLANNER'}
+                  </span>
+                </button>
+              );
+            })()}
 
             {/* Dynamic Route View Button (Only if route loaded) */}
             {routeData.length > 0 && (
               <>
-                <div className="w-px h-8 bg-slate-800" />
+                <div className="w-px h-8 bg-slate-800/50" />
                 
-                <button
-                  onClick={() => {
-                    const nextState = !isRightSidebarOpen;
-                    setIsRightSidebarOpen(nextState);
-                    if (nextState) {
-                      setIsSidebarOpen(false);
-                    }
-                  }}
-                  className="flex-1 flex flex-col items-center justify-center text-slate-400 hover:text-emerald-400 transition-all active:scale-95 py-1 relative"
-                >
-                  <div className="w-9 h-9 rounded-full bg-emerald-500/10 text-emerald-400 flex items-center justify-center mb-1">
-                    <i className="fa-solid fa-route text-xs" />
-                    <div className="absolute top-1.5 right-6 flex h-1.5 w-1.5">
-                      <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
-                      <span className="relative inline-flex rounded-full h-1.5 w-1.5 bg-emerald-500"></span>
-                    </div>
-                  </div>
-                  <span className="text-[9px] font-black uppercase tracking-widest text-[#10b981]">
-                    {lang === 'tr' ? 'PLANI GÖR' : 'VIEW PLAN'}
-                  </span>
-                </button>
+                {(() => {
+                  const isPlanActive = isRightSidebarOpen && !isSidebarOpen && !isExplorerMode;
+                  return (
+                    <button
+                      onClick={() => {
+                        setIsExplorerMode(false);
+                        setIsSidebarOpen(false);
+                        setIsRightSidebarOpen(true);
+                      }}
+                      className="flex-1 flex flex-col items-center justify-center transition-all active:scale-95 py-1 relative"
+                    >
+                      <div className={cn(
+                        "w-9 h-9 rounded-full flex items-center justify-center mb-1 transition-all duration-300",
+                        isPlanActive 
+                          ? "bg-emerald-500 text-slate-950 shadow-[0_0_15px_rgba(16,185,129,0.5)] transform scale-110" 
+                          : "bg-emerald-500/10 text-emerald-400 hover:bg-emerald-500/20"
+                      )}>
+                        <i className="fa-solid fa-route text-xs" />
+                        {!isPlanActive && (
+                          <div className="absolute top-1 right-5 flex h-1.5 w-1.5">
+                            <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
+                            <span className="relative inline-flex rounded-full h-1.5 w-1.5 bg-emerald-500"></span>
+                          </div>
+                        )}
+                      </div>
+                      <span className={cn(
+                        "text-[9px] uppercase tracking-widest transition-colors duration-300",
+                        isPlanActive ? "text-emerald-400 font-black" : "text-slate-400 font-bold"
+                      )}>
+                        {lang === 'tr' ? 'PLANI GÖR' : 'VIEW PLAN'}
+                      </span>
+                    </button>
+                  );
+                })()}
               </>
             )}
 
-            {/* Explore / Clear Route button */}
-            <div className="w-px h-8 bg-slate-800" />
+            {/* Explore standalone screen button */}
+            <div className="w-px h-8 bg-slate-800/50" />
             
-            <button
-              onClick={() => {
-                clearRoute();
-                setIsExplorerMode(true);
-                setIsSidebarOpen(false);
-                setIsRightSidebarOpen(false);
-                setTimeout(() => {
-                  const mapEl = document.getElementById('map-container');
-                  if (mapEl) mapEl.scrollIntoView({ behavior: 'smooth' });
-                }, 100);
-              }}
-              className="flex-1 flex flex-col items-center justify-center text-slate-400 hover:text-amber-400 transition-all active:scale-95 py-1"
-            >
-              <div className="w-9 h-9 rounded-full bg-amber-500/10 text-amber-400 flex items-center justify-center mb-1">
-                <i className="fa-solid fa-map-location-dot text-xs" />
-              </div>
-              <span className="text-[9px] font-black uppercase tracking-widest text-[#f59e0b]">
-                {lang === 'tr' ? 'HARİTA' : 'EXPLORE'}
-              </span>
-            </button>
+            {(() => {
+              const isMapActive = !isSidebarOpen && !isRightSidebarOpen;
+              return (
+                <button
+                  onClick={() => {
+                    if (routeData.length === 0) {
+                      setIsExplorerMode(true);
+                    } else {
+                      setIsExplorerMode(false);
+                    }
+                    setIsSidebarOpen(false);
+                    setIsRightSidebarOpen(false);
+                    setTimeout(() => {
+                      const mapEl = document.getElementById('map-container');
+                      if (mapEl) mapEl.scrollIntoView({ behavior: 'smooth' });
+                    }, 100);
+                  }}
+                  className="flex-1 flex flex-col items-center justify-center transition-all active:scale-95 py-1"
+                >
+                  <div className={cn(
+                    "w-9 h-9 rounded-full flex items-center justify-center mb-1 transition-all duration-300",
+                    isMapActive 
+                      ? "bg-amber-500 text-slate-950 shadow-[0_0_15px_rgba(245,158,11,0.5)] transform scale-110" 
+                      : "bg-amber-500/10 text-amber-400 hover:bg-amber-500/20"
+                  )}>
+                    <i className="fa-solid fa-map-location-dot text-xs" />
+                  </div>
+                  <span className={cn(
+                    "text-[9px] uppercase tracking-widest transition-colors duration-300",
+                    isMapActive ? "text-amber-400 font-black" : "text-slate-400 font-bold"
+                  )}>
+                    {lang === 'tr' ? 'HARİTA' : 'EXPLORE'}
+                  </span>
+                </button>
+              );
+            })()}
           </motion.div>
         </div>
       )}
