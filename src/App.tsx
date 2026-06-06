@@ -1378,9 +1378,15 @@ export default function App() {
                                   if (hotel) setSelectedHotel(hotel);
                                 }}
                               >
-                                {ISTANBUL_DATA.populer_oteller.map(h => (
-                                  <option key={h.isim} value={h.isim} className={cn("font-bold", theme === 'dark' ? "bg-slate-950 text-white" : "bg-white text-slate-900")}>{lang === 'tr' ? h.isim : (h.isim_en || h.isim)}</option>
-                                ))}
+                                {[...ISTANBUL_DATA.populer_oteller]
+                                  .sort((a, b) => {
+                                    const nameA = lang === 'tr' ? a.isim : (a.isim_en || a.isim);
+                                    const nameB = lang === 'tr' ? b.isim : (b.isim_en || b.isim);
+                                    return nameA.localeCompare(nameB, lang === 'tr' ? 'tr' : 'en');
+                                  })
+                                  .map(h => (
+                                    <option key={h.isim} value={h.isim} className={cn("font-bold", theme === 'dark' ? "bg-slate-950 text-white" : "bg-white text-slate-900")}>{lang === 'tr' ? h.isim : (h.isim_en || h.isim)}</option>
+                                  ))}
                               </select>
                             </div>
                           ) : activeTab === 'semt' ? (
