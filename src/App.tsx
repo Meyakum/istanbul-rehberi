@@ -1694,11 +1694,23 @@ export default function App() {
                     </p>
                   </div>
                 ) : (
-                  <MapContainer center={[41.015, 28.97]} zoom={13} zoomControl={false} className="w-full h-full" preferCanvas={true}>
+                  <MapContainer 
+                    center={[41.015, 28.97]} 
+                    zoom={13} 
+                    zoomControl={false} 
+                    className="w-full h-full" 
+                    preferCanvas={true} 
+                    minZoom={10} 
+                    maxZoom={18}
+                    maxBounds={[[40.60, 27.9], [41.45, 29.85]]}
+                    maxBoundsViscosity={1.0}
+                    worldCopyJump={false}
+                  >
                     <TileLayer 
                       url={theme === 'dark' ? "https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png" : "https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png"} 
                       attribution='&copy; CARTO' 
                       crossOrigin="anonymous"
+                      noWrap={true}
                     />
                     
                     {routeData.length === 0 && venues.filter(v => {
