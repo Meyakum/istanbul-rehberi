@@ -418,21 +418,23 @@ export default function App() {
               transition={{ delay: 0.2 }}
               className="relative z-10"
             >
-              <div className="w-24 h-24 bg-white/20 backdrop-blur-xl border border-white/30 rounded-[2rem] mx-auto mb-10 flex items-center justify-center shadow-2xl">
-                <Compass size={48} className="text-white" />
+              <div className="w-16 h-16 sm:w-24 sm:h-24 bg-white/20 backdrop-blur-xl border border-white/30 rounded-2xl sm:rounded-[2rem] mx-auto mb-6 sm:mb-10 flex items-center justify-center shadow-2xl">
+                <Compass size={32} className="text-white sm:hidden" />
+                <Compass size={48} className="text-white hidden sm:block" />
               </div>
-              <h1 className="text-6xl lg:text-9xl font-serif font-black mb-6 tracking-tighter drop-shadow-2xl">
+              <h1 className="text-4xl sm:text-6xl lg:text-9xl font-serif font-black mb-4 sm:mb-6 tracking-tighter drop-shadow-2xl">
                 {lang === 'tr' ? <>{t.discover.split(' ')[0]} <br/> <span className="italic text-blue-200">{t.discover.split(' ')[1]}</span></> : <>{t.discover.split(' ')[0]} <span className="italic text-blue-200">{t.discover.split(' ')[1]}</span></>}.
               </h1>
-              <p className="text-xl lg:text-3xl text-blue-50 max-w-3xl mx-auto mb-14 font-medium leading-relaxed opacity-90">
+              <p className="text-sm sm:text-xl lg:text-3xl text-blue-50 max-w-xl sm:max-w-3xl mx-auto mb-8 sm:mb-14 font-medium leading-relaxed opacity-90">
                 {t.subtitle}
               </p>
               <button 
                 onClick={() => setActiveScreen('app')}
-                className="bg-white text-blue-600 px-16 py-6 rounded-[2rem] text-2xl font-black hover:bg-blue-50 transition-all shadow-[0_20px_50px_rgba(0,0,0,0.3)] flex items-center gap-4 mx-auto active:scale-95 group"
+                className="bg-white text-blue-600 px-8 sm:px-16 py-4 sm:py-6 rounded-2xl sm:rounded-[2rem] text-lg sm:text-2xl font-black hover:bg-blue-50 transition-all shadow-[0_20px_50px_rgba(0,0,0,0.3)] flex items-center gap-3 sm:gap-4 mx-auto active:scale-95 group"
               >
                 {t.start}
-                <ChevronRight size={32} className="group-hover:translate-x-1 transition-transform" />
+                <ChevronRight size={24} className="sm:hidden group-hover:translate-x-1 transition-transform" />
+                <ChevronRight size={32} className="hidden sm:block group-hover:translate-x-1 transition-transform" />
               </button>
             </motion.div>
           </motion.div>
@@ -492,25 +494,28 @@ export default function App() {
               {/* Sidebar */}
               {!isExplorerMode && (
                 <aside className={cn(
-                  "fixed inset-0 lg:relative lg:inset-auto w-full lg:w-[420px] border-r flex flex-col z-[1001] lg:z-40 transition-all duration-500 ease-out shadow-2xl lg:shadow-none",
+                  "fixed inset-0 lg:relative lg:inset-auto w-full lg:w-[420px] border-r flex flex-col z-[1200] lg:z-40 transition-all duration-500 ease-out shadow-2xl lg:shadow-none",
                   theme === 'dark' ? "bg-slate-900 border-slate-800" : "bg-white border-slate-100",
                   isSidebarOpen ? "translate-x-0" : "-translate-x-full lg:absolute"
                 )}>
                 {/* Sidebar Header */}
-                <div className="p-8 border-b border-slate-50 dark:border-slate-800 shrink-0">
+                <div className="p-6 md:p-8 border-b border-slate-50 dark:border-slate-800 shrink-0">
                   <div className="flex items-center justify-between">
-                    <h2 className="text-[13px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-[0.2em]">
+                    <h2 className="text-[11px] md:text-[13px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-[0.2em]">
                       {t.planner}
                     </h2>
-                    <button onClick={() => setIsSidebarOpen(false)} className="text-slate-400 hover:text-red-500 transition-colors">
-                      <X size={20} />
+                    <button 
+                      onClick={() => setIsSidebarOpen(false)} 
+                      className="h-10 w-10 rounded-xl bg-slate-50 hover:bg-slate-100 dark:bg-slate-800 dark:hover:bg-slate-700/80 flex items-center justify-center text-slate-400 hover:text-red-500 active:scale-95 transition-all border border-slate-100 dark:border-slate-700 lg:hidden"
+                    >
+                      <X size={18} />
                     </button>
                   </div>
                 </div>
 
                 {/* Sidebar Scrollable Body */}
                 <div className="flex-1 overflow-y-auto custom-scrollbar relative">
-                    <div className="p-8 space-y-8">
+                    <div className="p-6 md:p-8 space-y-6 md:space-y-8">
                       {routeData.length > 0 ? (
                         <div className="h-full flex flex-col items-center justify-center gap-10 py-12">
                           <div className="relative">
@@ -888,26 +893,26 @@ export default function App() {
                       initial={{ y: 100, opacity: 0 }}
                       animate={{ y: 0, opacity: 1 }}
                       exit={{ y: 100, opacity: 0 }}
-                      className="absolute bottom-10 left-1/2 -translate-x-1/2 w-[90%] max-w-xl z-[1500]"
+                      className="absolute bottom-6 md:bottom-10 left-1/2 -translate-x-1/2 w-[92%] max-w-xl z-[1500]"
                     >
-                      <div className="bg-white dark:bg-slate-900 rounded-[3rem] shadow-[0_30px_60px_-12px_rgba(0,0,0,0.4)] overflow-hidden border border-slate-100 dark:border-slate-800 flex flex-col md:flex-row h-auto md:h-72">
-                        <div className="w-full md:w-1/2 h-48 md:h-full relative group">
+                      <div className="bg-white dark:bg-slate-900 rounded-[2rem] md:rounded-[3rem] shadow-[0_30px_60px_-12px_rgba(0,0,0,0.4)] overflow-hidden border border-slate-100 dark:border-slate-800 flex flex-col md:flex-row h-auto md:h-72">
+                        <div className="w-full md:w-1/2 h-44 md:h-full relative group">
                           <VenueImage 
                             src={selectedVenue.gorsel || ""} 
                             alt={lang === 'tr' ? selectedVenue.isim : (selectedVenue.isim_en || selectedVenue.isim)} 
                             className="w-full h-full transition-transform duration-700 group-hover:scale-110" 
                           />
                           <div className="absolute inset-0 bg-gradient-to-t from-black/80 to-transparent" />
-                          <div className="absolute bottom-8 left-8 right-8">
+                          <div className="absolute bottom-6 md:bottom-8 left-6 md:left-8 right-6 md:right-8">
                              <div className="text-[10px] text-blue-300 font-black uppercase tracking-widest mb-1">
                                {lang === 'tr' ? selectedVenue.tur : (selectedVenue.tur_en || selectedVenue.tur)}
                              </div>
-                             <div className="text-white text-2xl font-black uppercase tracking-tight leading-tight drop-shadow-lg">
+                             <div className="text-white text-xl md:text-2xl font-black uppercase tracking-tight leading-tight drop-shadow-lg">
                                {lang === 'tr' ? selectedVenue.isim : (selectedVenue.isim_en || selectedVenue.isim)}
                              </div>
                           </div>
                         </div>
-                        <div className="flex-1 p-8 flex flex-col justify-between relative bg-white dark:bg-slate-900">
+                        <div className="flex-1 p-6 md:p-8 flex flex-col justify-between relative bg-white dark:bg-slate-900">
                           <button onClick={() => setSelectedVenue(null)} className="absolute right-6 top-6 p-2 text-slate-300 dark:text-slate-600 hover:text-blue-600 transition-colors">
                             <X size={20} />
                           </button>
@@ -950,9 +955,10 @@ export default function App() {
                 <AnimatePresence>
                   {isViewingRoute && (
                     <motion.aside 
-                      initial={{ x: 420 }}
-                      animate={{ x: isRightSidebarOpen ? 0 : 420 }}
-                      className="absolute top-0 right-0 h-full w-[420px] bg-white/95 dark:bg-slate-900/95 backdrop-blur-xl border-l border-slate-100 dark:border-slate-800 z-[1001] shadow-2xl flex"
+                      initial={{ x: "100%" }}
+                      animate={{ x: isRightSidebarOpen ? "0%" : "100%" }}
+                      transition={{ type: "tween", ease: "easeInOut", duration: 0.35 }}
+                      className="fixed lg:absolute top-0 right-0 h-full w-full sm:w-[420px] bg-white/95 dark:bg-slate-900/95 backdrop-blur-xl border-l border-slate-100 dark:border-slate-800 z-[1200] shadow-2xl flex"
                     >
                       {/* Toggle Handle */}
                       <button 
@@ -960,8 +966,8 @@ export default function App() {
                         className={cn(
                           "absolute right-full top-24 h-14 bg-white dark:bg-slate-900 border border-slate-200/80 dark:border-slate-800 rounded-l-3xl flex items-center justify-center text-blue-600 shadow-2xl transition-all duration-300 hover:text-blue-700 active:scale-95 hover:bg-slate-50 dark:hover:bg-slate-800/80 group",
                           isRightSidebarOpen 
-                            ? "w-12" 
-                            : "w-auto px-6 gap-3 border-r-0"
+                            ? "w-12 hidden sm:flex" 
+                            : "w-auto px-6 gap-3 border-r-0 flex"
                         )}
                         title={isRightSidebarOpen ? (lang === 'tr' ? 'Kapat' : 'Close') : (lang === 'tr' ? 'Planı Gör' : 'View Plan')}
                       >
@@ -981,14 +987,17 @@ export default function App() {
                         )}
                       </button>
 
-                      <div className="flex-1 flex flex-col w-[420px]">
-                        <div className="p-8 border-b border-slate-100 dark:border-slate-800 shrink-0">
+                      <div className="flex-1 flex flex-col w-full max-w-full overflow-hidden">
+                        <div className="p-6 md:p-8 border-b border-slate-100 dark:border-slate-800 shrink-0">
                           <div className="flex items-center justify-between mb-6">
-                            <h2 className="text-[13px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-[0.2em]">
+                            <h2 className="text-[11px] md:text-[13px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-[0.2em]">
                               {lang === 'tr' ? 'GÜNLÜK ROTA PLANI' : 'DAILY ROUTE PLAN'}
                             </h2>
-                            <button onClick={() => setIsRightSidebarOpen(false)} className="text-slate-400 hover:text-red-500 transition-colors">
-                              <X size={20} />
+                            <button 
+                              onClick={() => setIsRightSidebarOpen(false)} 
+                              className="h-10 w-10 rounded-xl bg-slate-50 hover:bg-slate-100 dark:bg-slate-800 dark:hover:bg-slate-700/80 flex items-center justify-center text-slate-400 hover:text-red-500 active:scale-95 transition-all border border-slate-100 dark:border-slate-700"
+                            >
+                              <X size={18} />
                             </button>
                           </div>
 
@@ -1018,7 +1027,7 @@ export default function App() {
                           </div>
                         </div>
 
-                        <div className="flex-1 overflow-y-auto custom-scrollbar p-8 space-y-10">
+                        <div className="flex-1 overflow-y-auto custom-scrollbar p-6 md:p-8 space-y-8 md:space-y-10">
                           {routeData.filter(d => visibleDay === null || d.day === visibleDay).map((day, idx) => (
                             <div key={day.day} className="space-y-4 relative pl-6 border-l-2 border-slate-100 dark:border-slate-800">
                               <div className="absolute -left-[5px] top-0 w-2 h-2 bg-slate-200 dark:bg-slate-700 rounded-full" />
@@ -1059,12 +1068,12 @@ export default function App() {
             </div>
 
             {/* Footer */}
-            <footer className={cn("h-14 border-t flex items-center px-10 justify-between shrink-0 z-50 transition-colors", theme === 'dark' ? "bg-slate-900 border-slate-800" : "bg-white border-slate-50")}>
-              <span className="text-[10px] font-black text-slate-300 dark:text-slate-600 uppercase tracking-widest">© 2024 {t.title} v3.1</span>
-              <div className="flex items-center gap-8 text-[10px] font-black uppercase tracking-[0.2em] text-slate-300 dark:text-slate-600">
+            <footer className={cn("h-14 border-t flex items-center px-4 md:px-10 justify-between shrink-0 z-50 transition-colors", theme === 'dark' ? "bg-slate-900 border-slate-800" : "bg-white border-slate-50")}>
+              <span className="text-[9px] md:text-[10px] font-black text-slate-300 dark:text-slate-600 uppercase tracking-widest">© 2024 {t.title} v3.1</span>
+              <div className="flex items-center gap-4 sm:gap-8 text-[9px] md:text-[10px] font-black uppercase tracking-[0.2em] text-slate-300 dark:text-slate-600">
                 <span className="flex items-center gap-2"><div className="w-2 h-2 bg-green-500 rounded-full shadow-[0_0_8px_#22c55e]" /> {t.serverActive}</span>
-                <span className="opacity-20 text-slate-400">|</span>
-                <span className="text-slate-400 dark:text-slate-600">{t.dataStandards}</span>
+                <span className="opacity-20 text-slate-400 hidden sm:inline">|</span>
+                <span className="text-slate-400 dark:text-slate-600 hidden sm:inline">{t.dataStandards}</span>
               </div>
             </footer>
           </motion.div>
@@ -1078,32 +1087,33 @@ export default function App() {
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
-            className="fixed inset-0 z-[4000] flex items-center justify-center p-8 bg-slate-900/60 backdrop-blur-md"
+            className="fixed inset-0 z-[4000] flex items-center justify-center p-4 sm:p-8 bg-slate-900/60 backdrop-blur-md"
           >
             <motion.div 
               initial={{ scale: 0.95, y: 30 }}
               animate={{ scale: 1, y: 0 }}
               exit={{ scale: 0.95, y: 30 }}
-              className="bg-white dark:bg-slate-900 rounded-[4rem] shadow-[0_50px_100px_-20px_rgba(0,0,0,0.5)] max-w-2xl w-full p-12 relative overflow-y-auto max-h-[90vh]"
+              className="bg-white dark:bg-slate-900 rounded-[2rem] sm:rounded-[4rem] shadow-[0_50px_100px_-20px_rgba(0,0,0,0.5)] max-w-2xl w-full p-6 sm:p-12 relative overflow-y-auto max-h-[90vh]"
             >
               <div className="absolute -top-24 -right-24 w-64 h-64 bg-blue-50 dark:bg-blue-900/20 rounded-full blur-3xl opacity-50" />
               <button 
                 onClick={() => setShowHowItWorks(false)}
-                className="absolute right-10 top-10 p-4 bg-slate-50 dark:bg-slate-800 rounded-full text-slate-400 hover:text-blue-600 transition-all border border-slate-100 dark:border-slate-700"
+                className="absolute right-4 sm:right-10 top-4 sm:top-10 p-3 sm:p-4 bg-slate-50 dark:bg-slate-800 rounded-full text-slate-400 hover:text-blue-600 transition-all border border-slate-100 dark:border-slate-700"
               >
-                <X size={24} />
+                <X size={20} />
               </button>
               
-              <div className="w-24 h-24 bg-blue-600 rounded-[2.5rem] flex items-center justify-center text-white mb-10 shadow-2xl shadow-blue-100">
-                <Sparkles size={48} />
+              <div className="w-16 h-16 sm:w-24 sm:h-24 bg-blue-600 rounded-[1.5rem] sm:rounded-[2.5rem] flex items-center justify-center text-white mb-6 sm:mb-10 shadow-2xl shadow-blue-100 dark:shadow-none">
+                <Sparkles size={32} className="sm:hidden" />
+                <Sparkles size={48} className="hidden sm:block" />
               </div>
               
-              <h2 className="text-4xl font-black text-slate-900 dark:text-white mb-6 uppercase tracking-tighter">{t.howItWorksTitle}</h2>
-              <p className="text-lg text-slate-400 dark:text-slate-400 leading-relaxed mb-10 font-medium">
+              <h2 className="text-2xl sm:text-4xl font-black text-slate-900 dark:text-white mb-4 sm:mb-6 uppercase tracking-tighter">{t.howItWorksTitle}</h2>
+              <p className="text-sm sm:text-lg text-slate-500 dark:text-slate-400 leading-relaxed mb-6 sm:mb-10 font-medium">
                 {t.howItWorksDesc}
               </p>
 
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-10">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6 sm:mb-10">
                 <div className="p-6 bg-slate-50 dark:bg-slate-800 rounded-[2rem] border border-slate-100 dark:border-slate-700">
                   <div className="w-12 h-12 bg-white dark:bg-slate-700 rounded-2xl flex items-center justify-center text-blue-600 shadow-sm mb-4"><Navigation size={24} /></div>
                   <h4 className="font-black text-slate-800 dark:text-slate-100 text-xs uppercase tracking-widest mb-1">{t.optimization}</h4>
