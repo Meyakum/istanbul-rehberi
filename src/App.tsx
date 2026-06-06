@@ -1114,7 +1114,7 @@ export default function App() {
                     </h2>
                     <button 
                       onClick={() => setIsSidebarOpen(false)} 
-                      className="h-10 w-10 rounded-xl bg-slate-50 hover:bg-slate-100 dark:bg-slate-800 dark:hover:bg-slate-700/80 flex items-center justify-center text-slate-400 hover:text-red-500 active:scale-95 transition-all border border-slate-100 dark:border-slate-700 lg:hidden"
+                      className="h-10 w-10 rounded-xl bg-slate-50 hover:bg-slate-100 dark:bg-slate-800 dark:hover:bg-slate-700/80 flex items-center justify-center text-slate-400 hover:text-red-500 active:scale-95 transition-all border border-slate-100 dark:border-slate-700"
                     >
                       <X size={18} />
                     </button>
@@ -1485,16 +1485,18 @@ export default function App() {
                         position={activeTab === 'otel' ? [selectedHotel.koordinat.enlem, selectedHotel.koordinat.boylam] : [DISTRICT_COORDS[selectedDistrict]?.lat || 41.0082, DISTRICT_COORDS[selectedDistrict]?.lng || 28.9784]}
                         zIndexOffset={5000}
                         icon={L.divIcon({
-                          className: 'start-marker',
+                          className: 'completely-invisible-leaflet-wrapper',
                           html: `
-                            <div class="user-location-marker" style="position: relative; display: flex; flex-direction: column; align-items: center;">
-                              <div style="background-color: #3b82f6; color: white; width: 60px; height: 60px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 30px; border: 4px solid white; box-shadow: 0 8px 24px rgba(59,130,246,0.6); z-index: 2; transition: all 0.3s ease;">
-                                <i class="fa-solid fa-hotel"></i>
+                            <div class="user-location-marker-outer" style="background: transparent !important; background-color: transparent !important; border: none !important; box-shadow: none !important; display: flex; align-items: center; justify-content: center; width: 60px; height: 60px; outline: none !important;">
+                              <div class="user-location-marker" style="position: relative; display: flex; flex-direction: column; align-items: center; justify-content: center; background: transparent !important; border: none !important; outline: none !important;">
+                                <div style="background-color: #3b82f6; color: white; width: 60px; height: 60px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 30px; border: 4px solid white; box-shadow: 0 8px 24px rgba(59,130,246,0.6); z-index: 2; transition: all 0.3s ease;">
+                                  <i class="fa-solid fa-hotel"></i>
+                                </div>
+                                <div style="position: absolute; bottom: -28px; background: #3b82f6; color: white; padding: 4px 12px; border-radius: 12px; font-size: 9px; font-weight: 900; white-space: nowrap; box-shadow: 0 4px 12px rgba(0,0,0,0.2); border: 2px solid white; z-index: 3; text-transform: uppercase; letter-spacing: 0.1em;">
+                                  ${lang === 'tr' ? 'KONAKLAMA' : 'YOUR STAY'}
+                                </div>
+                                <div style="position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); width: 80px; height: 80px; border-radius: 50%; background: #3b82f6; opacity: 0.3; z-index: 1;"></div>
                               </div>
-                              <div style="position: absolute; bottom: -28px; background: #3b82f6; color: white; padding: 4px 12px; border-radius: 12px; font-size: 9px; font-weight: 900; white-space: nowrap; box-shadow: 0 4px 12px rgba(0,0,0,0.2); border: 2px solid white; z-index: 3; text-transform: uppercase; letter-spacing: 0.1em;">
-                                ${lang === 'tr' ? 'KONAKLAMA' : 'YOUR STAY'}
-                              </div>
-                              <div style="position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); width: 80px; height: 80px; border-radius: 50%; background: #3b82f6; opacity: 0.3; z-index: 1;"></div>
                             </div>
                           `,
                           iconSize: [60, 60],
