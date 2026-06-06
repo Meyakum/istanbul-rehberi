@@ -430,183 +430,106 @@ export default function App() {
     };
   }, []);
 
-  // Clean cancellation wrapper when the component itself unmounts
+  // SpeechSynthesis audio engine implementation for premium audio guide experience with real feedback
   useEffect(() => {
-    return () => {
-      if (typeof window !== 'undefined' && 'speechSynthesis' in window) {
-        try {
-          window.speechSynthesis.cancel();
-        } catch (err) {
-          console.warn(err);
-        }
-      }
-    };
-  }, []);
+    if (!('speechSynthesis' in window)) return;
 
-  // Helper to robustly split long string into short sentence-based arrays of max 180 chars to prevent Safari freezing mid-sentence
-  const chunkText = (text: string, maxLength: number = 180): string[] => {
-    if (!text) return [];
-    const sentences = text.match(/[^.!?]+[.!?]+(\s+|$)|[^.!?]+$/g) || [text];
-    const chunks: string[] = [];
-    let currentChunk = "";
+    let isCurrent = true;
 
-    for (const sentence of sentences) {
-      const trimmed = sentence.trim();
-      if (!trimmed) continue;
+    if (activeAudioVenue && isAudioPlaying) {
+      window.speechSynthesis.cancel(); // cancel any active narration first
       
-      if (trimmed.length > maxLength) {
-        const words = trimmed.split(/\s+/);
-        for (const word of words) {
-          if ((currentChunk + " " + word).trim().length > maxLength) {
-            if (currentChunk.trim()) {
-              chunks.push(currentChunk.trim());
-            }
-            currentChunk = word;
-          } else {
-            currentChunk = currentChunk ? (currentChunk + " " + word) : word;
-          }
-        }
-      } else if ((currentChunk + " " + trimmed).trim().length > maxLength) {
-        if (currentChunk.trim()) {
-          chunks.push(currentChunk.trim());
-        }
-        currentChunk = trimmed;
-      } else {
-        currentChunk = currentChunk ? (currentChunk + " " + trimmed) : trimmed;
-      }
-    }
-    
-    if (currentChunk.trim()) {
-      chunks.push(currentChunk.trim());
-    }
-    return chunks;
-  };
-
-  // Robust selector that guarantees a high-quality free voice matching active language on all engines
-  const getBestVoice = (allVoices: SpeechSynthesisVoice[], language: 'tr' | 'en'): SpeechSynthesisVoice | null => {
-    const list = allVoices.length > 0 ? allVoices : (typeof window !== 'undefined' && 'speechSynthesis' in window ? window.speechSynthesis.getVoices() : []);
-    if (language === 'tr') {
-      return (
-        list.find(v => v.lang.includes('TR') && v.name.includes('Online') && (v.name.includes('Dilara') || v.name.includes('Yasmin') || v.name.includes('Seda'))) ||
-        list.find(v => v.lang.includes('TR') && v.name.includes('Online')) ||
-        list.find(v => v.lang.startsWith('tr') && (v.name.includes('Yelda') || v.name.includes('Seda') || v.name.includes('Dilara'))) ||
-        list.find(v => v.lang.startsWith('tr') && v.name.toLowerCase().includes('natural')) ||
-        list.find(v => v.lang.startsWith('tr') && v.name.includes('Hazel')) ||
-        list.find(v => v.lang.startsWith('tr') && v.name.includes('Google')) ||
-        list.find(v => v.lang.startsWith('tr')) ||
-        null
-      );
-    } else {
-      return (
-        list.find(v => v.lang.startsWith('en') && v.name.includes('Natural')) ||
-        list.find(v => v.lang.startsWith('en') && v.name.includes('Google US English')) ||
-        list.find(v => v.lang.startsWith('en') && v.name.includes('Aria')) ||
-        list.find(v => v.lang.startsWith('en') && v.name.includes('Samantha')) ||
-        list.find(v => v.lang.startsWith('en') && v.name.includes('Premium')) ||
-        list.find(v => v.lang.startsWith('en') && v.name.includes('Google')) ||
-        list.find(v => v.lang.startsWith('en')) ||
-        null
-      );
-    }
-  };
-
-  // Safe reset/resume hack and user-gesture synchronous voice synthesis creation
-  const speakVenue = (venue: Venue, startAtPercentage: number = 0) => {
-    if (typeof window === 'undefined' || !('speechSynthesis' in window)) return;
-
-    // Reset synthesis queue safely right before speaking
-    try {
-      window.speechSynthesis.cancel();
-    } catch (err) {
-      console.warn(err);
-    }
-
-    const fullText = getVenueNarration(venue);
-    if (!fullText) return;
-
-    const charOffset = Math.floor((startAtPercentage / 100) * fullText.length);
-    const textToSpeak = fullText.slice(charOffset);
-
-    setActiveAudioVenue(venue);
-    setIsAudioPlaying(true);
-    setSpeechOffsetCharIndex(charOffset);
-    setAudioProgress(startAtPercentage);
-
-    // Filter chunks of <= 180 characters to secure Safari from freezing midway 
-    const chunks = chunkText(textToSpeak, 180);
-    if (chunks.length === 0) return;
-
-    let currentChunkIndex = 0;
-    let accumulatedCharsSpokenBefore = charOffset;
-
-    const speakNextChunk = () => {
-      if (currentChunkIndex >= chunks.length) {
-        setIsAudioPlaying(false);
-        setAudioProgress(100);
-        setSpeechOffsetCharIndex(0);
-        return;
-      }
-
-      const chunk = chunks[currentChunkIndex];
-      const utterance = new SpeechSynthesisUtterance(chunk);
+      const fullText = getVenueNarration(activeAudioVenue);
+      const totalTextLength = fullText.length;
+      
+      // Sliced text starting from the requested offset character index
+      const textToSpeak = fullText.slice(speechOffsetCharIndex);
+      
+      const utterance = new SpeechSynthesisUtterance(textToSpeak);
       utterance.lang = lang === 'tr' ? 'tr-TR' : 'en-US';
-
+      
+      // Set the pitch and slightly slower rate for high-quality human narration tone
       if (lang === 'tr') {
-        utterance.pitch = 0.98;
-        utterance.rate = 1.0;
+        utterance.pitch = 0.98; // Warmer, slightly deeper pitch sounds significantly more human-like and natural
+        utterance.rate = 0.98;  // Natural flow rate for Turkish narration
       } else {
         utterance.pitch = 1.05;
         utterance.rate = 0.95;
       }
 
+      // Smart filtering priority arrays to prioritize the absolute best premium/native free voices
       const allVoices = window.speechSynthesis.getVoices();
-      const selectedVoice = getBestVoice(allVoices, lang);
+      let selectedVoice: SpeechSynthesisVoice | null = null;
+
+      if (lang === 'tr') {
+        selectedVoice = 
+          // 1. Premium Microsoft Edge Online Natural Female Voices (extremely organic/human)
+          allVoices.find(v => v.lang.includes('TR') && v.name.includes('Online') && (v.name.includes('Dilara') || v.name.includes('Yasmin') || v.name.includes('Seda'))) ||
+          allVoices.find(v => v.lang.includes('TR') && v.name.includes('Online') && v.name.includes('Tolga')) || // fallback online male
+          // 2. High Quality Apple macOS/iOS Native Female Voices (Yelda is exceptionally premium, Seda is great)
+          allVoices.find(v => v.lang.startsWith('tr') && (v.name.includes('Yelda') || v.name.includes('Seda') || v.name.includes('Dilara'))) ||
+          // 3. Local Natural/Premium Female Voices
+          allVoices.find(v => v.lang.startsWith('tr') && v.name.includes('Natural') && (v.name.includes('Dilara') || v.name.includes('Yasmin') || v.name.includes('Seda') || v.name.includes('Hazel'))) ||
+          allVoices.find(v => v.lang.startsWith('tr') && v.name.includes('Natural')) ||
+          // 4. Microsoft Windows Standard Female Turkish Voice (Hazel/Dilara/Yasmin is much better than Tolga/Cem)
+          allVoices.find(v => v.lang.startsWith('tr') && v.name.includes('Hazel')) ||
+          allVoices.find(v => v.lang.startsWith('tr') && (v.name.includes('Dilara') || v.name.includes('Yasmin'))) ||
+          // 5. Google / Desktop Female or standard voices (excluding highly robotic Tolga/Cem where possible)
+          allVoices.find(v => v.lang.startsWith('tr') && v.name.includes('Google') && !v.name.includes('Tolga') && !v.name.includes('Cem')) ||
+          allVoices.find(v => v.lang.startsWith('tr') && !v.name.includes('Tolga') && !v.name.includes('Cem')) ||
+          allVoices.find(v => v.lang.startsWith('tr'));
+      } else {
+        selectedVoice = 
+          allVoices.find(v => v.lang.startsWith('en') && v.name.includes('Natural')) ||
+          allVoices.find(v => v.lang.startsWith('en') && v.name.includes('Google US English')) ||
+          allVoices.find(v => v.lang.startsWith('en') && v.name.includes('Aria')) ||
+          allVoices.find(v => v.lang.startsWith('en') && v.name.includes('Samantha')) ||
+          allVoices.find(v => v.lang.startsWith('en') && v.name.includes('Premium')) ||
+          allVoices.find(v => v.lang.startsWith('en') && v.name.includes('Google')) ||
+          allVoices.find(v => v.lang.startsWith('en'));
+      }
+
       if (selectedVoice) {
         utterance.voice = selectedVoice;
       }
 
       utterance.onboundary = (event) => {
+        if (!isCurrent) return;
         if (event.name === 'word') {
-          const absoluteCharIndex = accumulatedCharsSpokenBefore + event.charIndex;
-          const percentage = Math.min(100, Math.max(0, (absoluteCharIndex / fullText.length) * 100));
-          setAudioProgress(percentage);
+          // absolute char index is offset + the relative charIndex spoken in this slice
+          const absoluteCharIndex = speechOffsetCharIndex + event.charIndex;
+          const percentage = totalTextLength > 0 ? (absoluteCharIndex / totalTextLength) * 100 : 0;
+          setAudioProgress(Math.min(100, Math.max(0, percentage)));
         }
       };
 
       utterance.onend = () => {
-        accumulatedCharsSpokenBefore += chunk.length + 1;
-        currentChunkIndex += 1;
-        speakNextChunk();
+        if (!isCurrent) return;
+        setIsAudioPlaying(false);
+        setAudioProgress(100);
+        setSpeechOffsetCharIndex(0);
       };
 
       utterance.onerror = (e) => {
-        if (e.error !== 'interrupted' && e.error !== 'canceled') {
-          accumulatedCharsSpokenBefore += chunk.length + 1;
-          currentChunkIndex += 1;
-          speakNextChunk();
+        if (!isCurrent) return;
+        // Don't turn off if it was just interrupted/cancelled deliberately for seeking
+        if (e.error !== 'interrupted') {
+          setIsAudioPlaying(false);
         }
       };
 
-      try {
-        window.speechSynthesis.speak(utterance);
-      } catch (err) {
-        console.error("speechSynthesis.speak error: ", err);
+      window.speechSynthesis.speak(utterance);
+    } else {
+      window.speechSynthesis.cancel();
+    }
+
+    return () => {
+      isCurrent = false;
+      if ('speechSynthesis' in window) {
+        window.speechSynthesis.cancel();
       }
     };
-
-    speakNextChunk();
-  };
-
-  const handlePauseSpeech = () => {
-    if (typeof window !== 'undefined' && 'speechSynthesis' in window) {
-      try {
-        window.speechSynthesis.cancel();
-      } catch (err) {
-        console.warn(err);
-      }
-    }
-    setIsAudioPlaying(false);
-  };
+  }, [activeAudioVenue, isAudioPlaying, lang, voices, speechOffsetCharIndex]);
 
   // Smooth virtual time tracking to back up onboundary on all devices, browsers and platforms
   useEffect(() => {
@@ -643,9 +566,31 @@ export default function App() {
   // Handler to seek to any percentage of the voice narration
   const handleSeek = (percentage: number) => {
     if (!activeAudioVenue) return;
+    const fullText = getVenueNarration(activeAudioVenue);
+    const totalTextLength = fullText.length;
     
-    // Auto start playing when seeking with robust cross-browser gesture speaking
-    speakVenue(activeAudioVenue, percentage);
+    // Find approximate char position
+    let targetCharIndex = Math.floor((percentage / 100) * totalTextLength);
+    
+    // Find the nearest word boundary/space to avoid splitting words
+    if (targetCharIndex > 0 && targetCharIndex < totalTextLength) {
+      const spaceBefore = fullText.lastIndexOf(' ', targetCharIndex);
+      const spaceAfter = fullText.indexOf(' ', targetCharIndex);
+      
+      if (spaceBefore !== -1 && (spaceAfter === -1 || (targetCharIndex - spaceBefore < spaceAfter - targetCharIndex))) {
+        targetCharIndex = spaceBefore + 1;
+      } else if (spaceAfter !== -1) {
+        targetCharIndex = spaceAfter + 1;
+      }
+    }
+    
+    setSpeechOffsetCharIndex(targetCharIndex);
+    setAudioProgress(percentage);
+    
+    // Auto start playing when seeking (like standard media players)
+    if (!isAudioPlaying) {
+      setIsAudioPlaying(true);
+    }
   };
 
   const getVenueNarration = (venue: Venue) => {
