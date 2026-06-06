@@ -235,6 +235,57 @@ async function fetchVenues(): Promise<Venue[]> {
   }
 }
 
+const loadHtml2Pdf = (): Promise<any> => {
+  return new Promise((resolve, reject) => {
+    // @ts-ignore
+    if (window.html2pdf) {
+      // @ts-ignore
+      resolve(window.html2pdf);
+      return;
+    }
+
+    const urls = [
+      'https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js',
+      'https://cdn.jsdelivr.net/npm/html2pdf.js@0.10.1/dist/html2pdf.bundle.min.js',
+      'https://unpkg.com/html2pdf.js@0.10.1/dist/html2pdf.bundle.min.js'
+    ];
+
+    let index = 0;
+
+    const tryLoad = () => {
+      if (index >= urls.length) {
+        reject(new Error("All PDF library CDNs failed to load."));
+        return;
+      }
+
+      const script = document.createElement('script');
+      script.src = urls[index];
+      script.async = true;
+      script.crossOrigin = "anonymous";
+
+      script.onload = () => {
+        // @ts-ignore
+        if (window.html2pdf) {
+          // @ts-ignore
+          resolve(window.html2pdf);
+        } else {
+          index++;
+          tryLoad();
+        }
+      };
+
+      script.onerror = () => {
+        index++;
+        tryLoad();
+      };
+
+      document.head.appendChild(script);
+    };
+
+    tryLoad();
+  });
+};
+
 export default function App() {
   const [activeScreen, setActiveScreen] = useState<'landing' | 'app'>('landing');
   const [activeTab, setActiveTab] = useState<'otel' | 'semt'>('otel');
@@ -265,6 +316,73 @@ export default function App() {
   const [toastMessage, setToastMessage] = useState<string | null>(null);
   const [isDownloadingPDF, setIsDownloadingPDF] = useState<boolean>(false);
   const [shouldAutoDraw, setShouldAutoDraw] = useState<boolean>(false);
+
+  // Weather Support & Optimization States
+  const [dailyWeather, setDailyWeather] = useState<{ day: number, condition: 'Sunny' | 'Cloudy' | 'Light Rain' | 'Rainy', temp: number, pop: number }[]>([]);
+  const [weatherOptimized, setWeatherOptimized] = useState<boolean>(false);
+  const [weatherOptimizeEnabled, setWeatherOptimizeEnabled] = useState<boolean>(false);
+
+  const generateMockWeather = (daysCount: number) => {
+    const list = [];
+    const states: { condition: 'Sunny' | 'Cloudy' | 'Light Rain' | 'Rainy', temp: number, pop: number }[] = [
+      { condition: 'Sunny', temp: 24, pop: 10 },
+      { condition: 'Light Rain', temp: 18, pop: 25 },
+      { condition: 'Cloudy', temp: 21, pop: 15 },
+      { condition: 'Rainy', temp: 15, pop: 85 },
+      { condition: 'Sunny', temp: 26, pop: 5 },
+      { condition: 'Light Rain', temp: 19, pop: 35 },
+      { condition: 'Rainy', temp: 14, pop: 90 },
+      { condition: 'Cloudy', temp: 22, pop: 20 },
+      { condition: 'Sunny', temp: 25, pop: 8 },
+      { condition: 'Rainy', temp: 13, pop: 95 }
+    ];
+    for (let d = 1; d <= daysCount; d++) {
+      const info = states[(d - 1) % states.length];
+      list.push({
+        day: d,
+        condition: info.condition,
+        temp: info.temp,
+        pop: info.pop
+      });
+    }
+    return list;
+  };
+
+  const isOutdoorVenue = (v: Venue): boolean => {
+    const tur = v.tur.toLowerCase();
+    const outdoorFilters = ["park", "doğa", "koru", "orman", "bahçe", "sahil", "ada", "deniz", "manzara", "seyir", "meydan", "köy", "semt", "köprü", "hisar", "kale", "tema park"];
+    return outdoorFilters.some(filter => tur.includes(filter));
+  };
+
+  const getWeatherEmoji = (condition: string) => {
+    switch (condition) {
+      case 'Sunny': return '☀️';
+      case 'Cloudy': return '☁️';
+      case 'Light Rain': return '🌦️';
+      case 'Rainy': return '🌧️';
+      default: return '☀️';
+    }
+  };
+
+  const getWeatherDesc = (condition: string) => {
+    if (lang === 'tr') {
+      switch (condition) {
+        case 'Sunny': return 'Güneşli';
+        case 'Cloudy': return 'Bulutlu';
+        case 'Light Rain': return 'Hafif Yağmurlu';
+        case 'Rainy': return 'Kuvvetli Yağış';
+        default: return 'Güneşli';
+      }
+    } else {
+      switch (condition) {
+        case 'Sunny': return 'Sunny';
+        case 'Cloudy': return 'Cloudy';
+        case 'Light Rain': return 'Light Rain';
+        case 'Rainy': return 'Heavy Rain';
+        default: return 'Sunny';
+      }
+    }
+  };
 
   const showToast = (msg: string) => {
     setToastMessage(msg);
@@ -398,6 +516,11 @@ export default function App() {
       setIsLoadingVenues(false);
     };
     loadData();
+
+    // Preload the html2pdf library in the background
+    loadHtml2Pdf().catch((err) => {
+      console.warn("Background PDF preloading failed (will retry on usage):", err);
+    });
   }, []);
 
   // Load query params on load and trigger auto routing
@@ -555,6 +678,10 @@ export default function App() {
       ? { lat: selectedHotel.koordinat.enlem, lng: selectedHotel.koordinat.boylam }
       : (DISTRICT_COORDS[selectedDistrict] || { lat: 41.015, lng: 28.974 });
 
+    const weatherList = generateMockWeather(duration);
+    setDailyWeather(weatherList);
+    let isOptimized = false;
+
     let unvisited = [...filteredVenues];
     const dailyRoutes: { day: number, venues: Venue[] }[] = [];
     
@@ -562,6 +689,20 @@ export default function App() {
       const dayVenues: Venue[] = [];
       let currentPos = { ...startPos };
       const venuesPerDay = pace;
+      
+      const weatherObj = weatherList[d - 1];
+      const isSubstantialRain = weatherObj && weatherObj.condition === 'Rainy' && weatherObj.pop >= 40;
+      const isRainy = weatherOptimizeEnabled && isSubstantialRain;
+
+      // Weather optimization: prefer indoor venues during rainy days
+      let useIndoorOnly = false;
+      if (isRainy) {
+        const indoorUnvisitedExist = unvisited.some(v => !isOutdoorVenue(v));
+        if (indoorUnvisitedExist) {
+          useIndoorOnly = true;
+          isOptimized = true;
+        }
+      }
 
       for (let i = 0; i < venuesPerDay; i++) {
         if (unvisited.length === 0) break;
@@ -570,12 +711,26 @@ export default function App() {
         let minDistance = Infinity;
 
         unvisited.forEach((v, idx) => {
+          if (useIndoorOnly && isOutdoorVenue(v)) {
+            return; // Skip outdoor venues during rainy days if indoor options remain
+          }
           const dist = getDistance(currentPos.lat, currentPos.lng, v.koordinat.enlem, v.koordinat.boylam);
           if (dist < minDistance) {
             minDistance = dist;
             nearestIdx = idx;
           }
         });
+
+        // Fallback: if we were searching for indoor only but empty, try all unvisited
+        if (nearestIdx === -1 && useIndoorOnly) {
+          unvisited.forEach((v, idx) => {
+            const dist = getDistance(currentPos.lat, currentPos.lng, v.koordinat.enlem, v.koordinat.boylam);
+            if (dist < minDistance) {
+              minDistance = dist;
+              nearestIdx = idx;
+            }
+          });
+        }
 
         if (nearestIdx !== -1) {
           const nextVenue = unvisited.splice(nearestIdx, 1)[0];
@@ -589,6 +744,7 @@ export default function App() {
       }
     }
 
+    setWeatherOptimized(isOptimized);
     setRouteData(dailyRoutes);
     setIsGenerating(false);
     setIsSidebarOpen(false);
@@ -601,6 +757,8 @@ export default function App() {
     setRouteData([]);
     setIsViewingRoute(false);
     setVisibleDay(null);
+    setDailyWeather([]);
+    setWeatherOptimized(false);
   };
 
   const handleShareRoute = () => {
@@ -631,20 +789,61 @@ export default function App() {
     }
   };
 
-  const handleDownloadPDF = () => {
+  const handleDownloadPDF = async () => {
     if (routeData.length === 0) return;
     setIsDownloadingPDF(true);
 
-    // Create custom off-screen container for PDF generation
+    let html2pdfLib: any;
+    try {
+      html2pdfLib = await loadHtml2Pdf();
+    } catch (err) {
+      console.error("Could not load pdf library dynamic load:", err);
+      setIsDownloadingPDF(false);
+      showToast(lang === 'tr' ? 'PDF kütüphanesi yüklenemedi.' : 'PDF library could not be loaded.');
+      return;
+    }
+
+    // Capture Leaflet Map snapshot safely using html2canvas before template build
+    let mapImageSrc = "";
+    try {
+      const mapElement = document.getElementById('map-container');
+      // @ts-ignore
+      const h2c = window.html2canvas;
+      if (h2c && mapElement) {
+        // Allow map layer tiles to fully load and settle before capture
+        await new Promise(resolve => setTimeout(resolve, 500));
+        
+        const mapCanvas = await h2c(mapElement, {
+          useCORS: true,
+          allowTaint: false,
+          logging: false,
+          scale: 1.5,
+          ignoreElements: (el: HTMLElement) => {
+            return !!(el.classList && (
+              el.classList.contains('leaflet-control-container') ||
+              el.classList.contains('leaflet-draw')
+            ));
+          }
+        });
+        mapImageSrc = mapCanvas.toDataURL('image/jpeg', 0.9);
+      }
+    } catch (mapErr) {
+      console.warn("Leaflet map capture skipped in PDF export:", mapErr);
+    }
+
+    // Create custom offscreen container for PDF generation (ensuring physical layout calculations work correctly)
     const container = document.createElement('div');
+    container.id = 'pdf-print-container';
     container.style.position = 'absolute';
     container.style.left = '-9999px';
     container.style.top = '-9999px';
-    container.style.width = '790px'; // standard printable representation
+    container.style.width = '790px'; // Standard printed single-page width
     container.style.padding = '40px';
     container.style.backgroundColor = '#ffffff';
     container.style.color = '#1e293b';
     container.style.fontFamily = 'Inter, system-ui, sans-serif';
+    container.style.display = 'block';
+    container.style.visibility = 'visible';
 
     const startingPoint = activeTab === 'otel' ? selectedHotel.isim : selectedDistrict;
     const catLabels = preferences.map(pref => (TRANSLATIONS[lang].cats as any)[pref] || pref).join(', ');
@@ -679,36 +878,61 @@ export default function App() {
         </div>
       </div>
 
-      <div style="display: flex; flex-direction: column; gap: 24px;">
-        ${routeData.map(day => `
-          <div style="background-color: #ffffff; border: 1px solid #f1f5f9; border-radius: 20px; padding: 20px; page-break-inside: avoid; box-shadow: 0 4px 6px -1px rgba(0,0,0,0.03);">
-            <div style="display: flex; align-items: center; gap: 8px; margin-bottom: 16px; border-bottom: 1px solid #f1f5f9; padding-bottom: 12px;">
-              <span style="background-color: #2563eb; color: #ffffff; width: 28px; height: 28px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 11px; font-weight: 800;">${day.day}</span>
-              <h2 style="font-size: 14px; font-weight: 800; color: #1e293b; margin: 0; text-transform: uppercase; letter-spacing: 0.05em;">${day.day}. ${lang === 'tr' ? 'GÜN PLANI' : 'DAY PLAN'}</h2>
-            </div>
-            
-            <div style="display: flex; flex-direction: column; gap: 14px;">
-              ${day.venues.map((v, vIdx) => `
-                <div style="display: flex; gap: 14px;">
-                  <div style="width: 22px; font-size: 11px; font-weight: 800; color: #2563eb; display: flex; align-items: center; justify-content: center; height: 22px; background-color: #eff6ff; border-radius: 8px; shrink: 0;">
-                    ${vIdx + 1}
-                  </div>
-                  <div style="flex: 1;">
-                    <h3 style="font-size: 12px; font-weight: 750; color: #0f172a; margin: 0; text-transform: uppercase;">
-                      ${lang === 'tr' ? v.isim : (v.isim_en || v.isim)}
-                    </h3>
-                    <div style="font-size: 9px; font-weight: 700; color: #64748b; text-transform: uppercase; margin-top: 2px;">
-                      ${lang === 'tr' ? v.tur : (v.tur_en || v.tur)}
-                    </div>
-                    <p style="font-size: 11px; color: #475569; margin: 6px 0 0 0; line-height: 1.5; font-style: italic;">
-                      "${lang === 'tr' ? v.kisa_tarihce : (v.kisa_tarihce_en || v.kisa_tarihce)}"
-                    </p>
-                  </div>
-                </div>
-              `).join('')}
-            </div>
+      ${mapImageSrc ? `
+        <div style="margin-bottom: 30px; page-break-inside: avoid;">
+          <h2 style="font-size: 14px; font-weight: 800; color: #1e293b; margin: 0 0 12px 0; text-transform: uppercase; letter-spacing: 0.05em; border-bottom: 1.5px solid #f1f5f9; padding-bottom: 8px;">
+            🗺️ ${lang === 'tr' ? 'SEYAHAT ROTASI HARİTASI' : 'TRAVEL ROUTE MAP'}
+          </h2>
+          <div style="border: 1px solid #e2e8f0; border-radius: 20px; overflow: hidden; height: 320px; background-color: #f8fafc; display: flex; align-items: center; justify-content: center; box-shadow: 0 4px 10px rgba(0,0,0,0.02);">
+            <img referrerPolicy="no-referrer" src="${mapImageSrc}" style="width: 100%; height: 100%; object-fit: cover; display: block;" />
           </div>
-        `).join('')}
+        </div>
+      ` : ''}
+
+      <div style="display: flex; flex-direction: column; gap: 24px;">
+        ${routeData.map(day => {
+          const weatherObj = dailyWeather.find(w => w.day === day.day);
+          const weatherBadge = weatherObj 
+            ? `<div style="font-size: 11px; font-weight: 700; color: #475569; display: flex; align-items: center; gap: 5px; background-color: #f1f5f9; padding: 4px 10px; border-radius: 9999px;">
+                 <span>${getWeatherEmoji(weatherObj.condition)}</span>
+                 <span>${getWeatherDesc(weatherObj.condition)}</span>
+                 <span>•</span>
+                 <span>${weatherObj.temp}°C</span>
+               </div>`
+            : '';
+          return `
+            <div style="background-color: #ffffff; border: 1px solid #f1f5f9; border-radius: 20px; padding: 20px; page-break-inside: avoid; box-shadow: 0 4px 6px -1px rgba(0,0,0,0.03);">
+              <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 16px; border-bottom: 1px solid #f1f5f9; padding-bottom: 12px; flex-wrap: wrap; gap: 8px;">
+                <div style="display: flex; align-items: center; gap: 8px;">
+                  <span style="background-color: #2563eb; color: #ffffff; width: 28px; height: 28px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 11px; font-weight: 800;">${day.day}</span>
+                  <h2 style="font-size: 14px; font-weight: 800; color: #1e293b; margin: 0; text-transform: uppercase; letter-spacing: 0.05em;">${day.day}. ${lang === 'tr' ? 'GÜN PLANI' : 'DAY PLAN'}</h2>
+                </div>
+                ${weatherBadge}
+              </div>
+              
+              <div style="display: flex; flex-direction: column; gap: 14px;">
+                ${day.venues.map((v, vIdx) => `
+                  <div style="display: flex; gap: 14px;">
+                    <div style="width: 22px; font-size: 11px; font-weight: 800; color: #2563eb; display: flex; align-items: center; justify-content: center; height: 22px; background-color: #eff6ff; border-radius: 8px; shrink: 0;">
+                      ${vIdx + 1}
+                    </div>
+                    <div style="flex: 1;">
+                      <h3 style="font-size: 12px; font-weight: 750; color: #0f172a; margin: 0; text-transform: uppercase;">
+                        ${lang === 'tr' ? v.isim : (v.isim_en || v.isim)}
+                      </h3>
+                      <div style="font-size: 9px; font-weight: 700; color: #64748b; text-transform: uppercase; margin-top: 2px;">
+                        ${lang === 'tr' ? v.tur : (v.tur_en || v.tur)}
+                      </div>
+                      <p style="font-size: 11px; color: #475569; margin: 6px 0 0 0; line-height: 1.5; font-style: italic;">
+                        "${lang === 'tr' ? v.kisa_tarihce : (v.kisa_tarihce_en || v.kisa_tarihce)}"
+                      </p>
+                    </div>
+                  </div>
+                `).join('')}
+              </div>
+            </div>
+          `;
+        }).join('')}
       </div>
 
       <div style="margin-top: 40px; border-top: 1px solid #f1f5f9; padding-top: 16px; text-align: center; font-size: 9px; color: #94a3b8; font-weight: 700; text-transform: uppercase; letter-spacing: 0.05em;">
@@ -718,18 +942,48 @@ export default function App() {
 
     document.body.appendChild(container);
 
+    // Wait for the browser to parse HTML and completely load/decode any static/dynamic imagery including map snapshot
+    const images = Array.from(container.querySelectorAll('img'));
+    await Promise.all(images.map(img => {
+      return new Promise<void>((resolve) => {
+        if (img.complete) {
+          resolve();
+        } else {
+          img.onload = () => resolve();
+          img.onerror = () => resolve(); // Always resolve to ensure rendering doesn't freeze in case of a CDN fallback failure
+        }
+      });
+    }));
+
+    // Pause briefly for layout stabilization
+    await new Promise(resolve => setTimeout(resolve, 300));
+
     const opt = {
       margin:       12,
       filename:     `istanbul-seyahat-plani-${duration}-gunluk.pdf`,
       image:        { type: 'jpeg', quality: 0.98 },
-      html2canvas:  { scale: 2, useCORS: true },
+      html2canvas:  { 
+        scale: 2, 
+        useCORS: true, 
+        allowTaint: false,
+        logging: false,
+        scrollX: 0, 
+        scrollY: 0,
+        onclone: (clonedDoc: any) => {
+          // Inside the cloned rendering context, ensure container positions beautifully
+          const target = clonedDoc.getElementById('pdf-print-container');
+          if (target) {
+            target.style.position = 'relative';
+            target.style.left = '0';
+            target.style.top = '0';
+          }
+        }
+      },
       jsPDF:        { unit: 'mm', format: 'a4', orientation: 'portrait' }
     };
 
-    // @ts-ignore
-    const html2pdf = window.html2pdf;
-    if (html2pdf) {
-      html2pdf().from(container).set(opt).save().then(() => {
+    if (html2pdfLib) {
+      html2pdfLib().from(container).set(opt).save().then(() => {
         document.body.removeChild(container);
         setIsDownloadingPDF(false);
         showToast(lang === 'tr' ? 'PDF başarıyla indirildi!' : 'PDF downloaded successfully!');
@@ -742,7 +996,7 @@ export default function App() {
     } else {
       try { document.body.removeChild(container); } catch (_) {}
       setIsDownloadingPDF(false);
-      showToast(lang === 'tr' ? 'PDF kütüphanesi yüklenemedi.' : 'PDF library could not be loaded.');
+      showToast(lang === 'tr' ? 'Yükleme sırasında hata oluştu.' : 'Error generating PDF.');
     }
   };
 
@@ -998,6 +1252,40 @@ export default function App() {
                             </div>
                           </div>
 
+                          <div className="space-y-3">
+                            <label className="text-[13px] font-bold text-slate-600 dark:text-slate-400 uppercase tracking-widest flex items-center justify-between">
+                              <div className="flex items-center gap-2 select-none cursor-pointer" onClick={() => setWeatherOptimizeEnabled(!weatherOptimizeEnabled)}>
+                                <span className="text-sm shrink-0">🌦️</span>
+                                <span>{lang === 'tr' ? 'HAVA DURUMU OPTİMİZASYONU' : 'WEATHER OPTIMIZATION'}</span>
+                              </div>
+                              <span className={cn("font-black tracking-wider text-[11px]", weatherOptimizeEnabled ? "text-emerald-500" : "text-slate-400")}>
+                                {weatherOptimizeEnabled ? (lang === 'tr' ? 'AKTİF' : 'ACTIVE') : (lang === 'tr' ? 'KAPALI' : 'DISABLED')}
+                              </span>
+                            </label>
+                            <div className="p-4 bg-slate-100 dark:bg-slate-800/80 rounded-2xl border border-slate-200 dark:border-slate-700 flex justify-between items-center gap-4">
+                              <div className="text-[11px] text-slate-600 dark:text-slate-300 leading-relaxed font-semibold">
+                                {lang === 'tr'
+                                  ? 'Aktif yağış tahminlerinde açık hava mekanlarını (parklar vb.) yağmurlu günlerden kapalı mekan etkinlikleriyle otomatik olarak yer değiştirir.'
+                                  : 'Automatically switches outdoor locations with indoor alternatives on heavily forecasted rainy days.'}
+                              </div>
+                              <button
+                                type="button"
+                                onClick={() => setWeatherOptimizeEnabled(!weatherOptimizeEnabled)}
+                                className={cn(
+                                  "relative inline-flex h-6 w-11 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none",
+                                  weatherOptimizeEnabled ? "bg-blue-600" : "bg-slate-300 dark:bg-slate-700"
+                                )}
+                              >
+                                <span
+                                  className={cn(
+                                    "pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow-lg ring-0 transition duration-200 ease-in-out",
+                                    weatherOptimizeEnabled ? "translate-x-5" : "translate-x-0"
+                                  )}
+                                />
+                              </button>
+                            </div>
+                          </div>
+
                           <div className="space-y-4">
                             <label className="text-[12px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-widest">{t.interests}</label>
                             <div className="grid grid-cols-2 gap-3">
@@ -1161,10 +1449,11 @@ export default function App() {
                     </p>
                   </div>
                 ) : (
-                  <MapContainer center={[41.015, 28.97]} zoom={13} zoomControl={false} className="w-full h-full">
+                  <MapContainer center={[41.015, 28.97]} zoom={13} zoomControl={false} className="w-full h-full" preferCanvas={true}>
                     <TileLayer 
                       url={theme === 'dark' ? "https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png" : "https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png"} 
                       attribution='&copy; CARTO' 
+                      crossOrigin="anonymous"
                     />
                     
                     {routeData.length === 0 && venues.filter(v => {
@@ -1411,6 +1700,23 @@ export default function App() {
                             </button>
                           </div>
 
+                          {/* Smart Assistant Alert for Weather Optimization */}
+                          {weatherOptimized && (
+                            <motion.div 
+                              initial={{ opacity: 0, height: 0 }}
+                              animate={{ opacity: 1, height: "auto" }}
+                              className="mb-5 p-3.5 bg-blue-50/80 dark:bg-blue-950/40 border border-blue-200/50 dark:border-blue-900/60 rounded-2xl flex items-start gap-2.5 shadow-md overflow-hidden"
+                            >
+                              <span className="text-base shrink-0 select-none">🌧️</span>
+                              <div className="text-blue-950 dark:text-blue-100 text-[11px] font-extrabold leading-normal">
+                                {lang === 'tr' 
+                                  ? "İstanbul'da yağış beklendiği için rotanız kapalı mekan etkinlikleriyle otomatik olarak optimize edilmiştir." 
+                                  : "Due to expected rain in Istanbul, your route has been automatically optimized with indoor activities."
+                                }
+                              </div>
+                            </motion.div>
+                          )}
+
                           {/* Day Filter Bubbles */}
                           <div className="flex flex-wrap gap-2">
                             <button 
@@ -1422,18 +1728,24 @@ export default function App() {
                             >
                               {lang === 'tr' ? 'TÜMÜ' : 'ALL'}
                             </button>
-                            {routeData.map((day) => (
-                              <button 
-                                key={day.day}
-                                onClick={() => setVisibleDay(day.day)}
-                                className={cn(
-                                  "px-4 py-2 rounded-full text-[10px] font-black uppercase tracking-widest transition-all",
-                                  visibleDay === day.day ? "bg-blue-600 text-white shadow-lg" : "bg-slate-100 dark:bg-slate-800 text-slate-400 hover:text-blue-600"
-                                )}
-                              >
-                                {t.day} {day.day}
-                              </button>
-                            ))}
+                            {routeData.map((day) => {
+                              const weatherObj = dailyWeather.find(w => w.day === day.day);
+                              const emoji = weatherObj ? getWeatherEmoji(weatherObj.condition) : '☀️';
+                              return (
+                                <button 
+                                  key={day.day}
+                                  onClick={() => setVisibleDay(day.day)}
+                                  className={cn(
+                                    "px-4 py-2 rounded-full text-[10px] font-black uppercase tracking-widest transition-all gap-1.5 flex items-center justify-center",
+                                    visibleDay === day.day ? "bg-blue-600 text-white shadow-lg" : "bg-slate-100 dark:bg-slate-800 text-slate-400 hover:text-blue-600"
+                                  )}
+                                  title={weatherObj ? `${getWeatherDesc(weatherObj.condition)} • ${weatherObj.temp}°C` : ''}
+                                >
+                                  <span>{t.day} {day.day}</span>
+                                  <span className="text-xs">{emoji}</span>
+                                </button>
+                              );
+                            })}
                           </div>
                         </div>
 
@@ -1441,7 +1753,25 @@ export default function App() {
                           {routeData.filter(d => visibleDay === null || d.day === visibleDay).map((day, idx) => (
                             <div key={day.day} className="space-y-4 relative pl-6 border-l-2 border-slate-100 dark:border-slate-800">
                               <div className="absolute -left-[5px] top-0 w-2 h-2 bg-slate-200 dark:bg-slate-700 rounded-full" />
-                              <div className="text-[10px] font-black text-blue-600 tracking-widest uppercase bg-blue-50 dark:bg-blue-900/30 px-3 py-1 rounded-full inline-block">{t.day} {day.day}</div>
+                              <div className="flex items-center gap-2 flex-wrap">
+                                <span className="text-[10px] font-black text-blue-600 tracking-widest uppercase bg-blue-50 dark:bg-blue-900/30 px-3 py-1 rounded-full">
+                                  {t.day} {day.day}
+                                </span>
+                                {(() => {
+                                  const weatherObj = dailyWeather.find(w => w.day === day.day);
+                                  if (weatherObj) {
+                                    return (
+                                      <span className="text-[9px] font-extrabold text-slate-500 bg-slate-50 border border-slate-100 dark:bg-slate-800/85 dark:border-slate-700/80 dark:text-slate-400 px-2.5 py-1 rounded-full flex items-center gap-1.5 shrink-0 shadow-sm">
+                                        <span>{getWeatherEmoji(weatherObj.condition)}</span>
+                                        <span>{getWeatherDesc(weatherObj.condition)}</span>
+                                        <span>•</span>
+                                        <span className="font-mono">{weatherObj.temp}°C</span>
+                                      </span>
+                                    );
+                                  }
+                                  return null;
+                                })()}
+                              </div>
                               <div className="space-y-3">
                                 {day.venues.map((v, vIdx) => (
                                   <motion.div 
