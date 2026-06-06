@@ -98,12 +98,7 @@ const createCategoryIcon = (tur: string, label?: string, customColor?: string) =
 const dayColors = ["#3b82f6", "#10b981", "#f59e0b", "#ef4444", "#8b5cf6", "#ec4899", "#06b6d4"];
 
 function MapUpdater({ center }: { center: [number, number] | null }) {
-  const map = useMap();
-  useEffect(() => {
-    if (center) {
-      map.setView(center, map.getZoom(), { animate: true });
-    }
-  }, [center, map]);
+  // Disabled per request so that map stays in its last left-off position
   return null;
 }
 
@@ -123,70 +118,117 @@ function RouteFitter({ routeData }: { routeData: { day: number, venues: Venue[] 
   return null;
 }
 
-const SPECIAL_QUERIES: { [key: string]: string } = {
-  "Yeni Cami (Eminönü)": "Yeni Cami Eminönü İstanbul",
-  "Maçka Parkı": "Maçka Demokrasi Parkı İstanbul",
-  "Yıldız Parkı": "Beşiktaş Yıldız Parkı İstanbul",
-  "Moda Sahili": "Kadıköy Moda Sahili",
-  "Yeni Cami": "Yeni Cami Eminönü İstanbul"
-};
-
-function WikiImage({ title, fallback, className }: { title: string, fallback: string, className?: string }) {
-  const [imgUrl, setImgUrl] = useState<string | null>(null);
-  const [isLoading, setIsLoading] = useState(true);
+function MapResizer({ 
+  isSidebarOpen, 
+  isRightSidebarOpen, 
+  isViewingRoute, 
+  isExplorerMode 
+}: { 
+  isSidebarOpen: boolean; 
+  isRightSidebarOpen: boolean; 
+  isViewingRoute: boolean; 
+  isExplorerMode: boolean; 
+}) {
+  const map = useMap();
 
   useEffect(() => {
-    let isMounted = true;
-    
-    const fetchWikiImage = async () => {
-      try {
-        // Prepare title for Wikipedia URL (spaces to underscores)
-        const baseTitle = SPECIAL_QUERIES[title] || title;
-        const underscoredTitle = encodeURIComponent(baseTitle.replace(/ /g, '_'));
-        
-        // 1. Priority: Turkish Wikipedia REST API Summary
-        let res = await fetch(`https://tr.wikipedia.org/api/rest_v1/page/summary/${underscoredTitle}`);
-        let data = await res.json();
-        let source = data.originalimage?.source || data.thumbnail?.source;
+    // Invalidate size immediately
+    map.invalidateSize();
 
-        // 2. Secondary: Global (English) Wikipedia if not found in TR
-        if (!source || data.status === 404) {
-          res = await fetch(`https://en.wikipedia.org/api/rest_v1/page/summary/${underscoredTitle}`);
-          data = await res.json();
-          source = data.originalimage?.source || data.thumbnail?.source;
-        }
+    // Invalidate periodically over the transition period (usually 300ms to 600ms)
+    const timeouts = [50, 100, 150, 200, 250, 300, 350, 400, 500, 600, 800].map(delay => 
+      setTimeout(() => {
+        map.invalidateSize();
+      }, delay)
+    );
 
-        if (isMounted) {
-          // 3. Fallback: Dynamic Unsplash with specific Istanbul context
-          const finalUrl = source || `https://images.unsplash.com/photo-1524231757912-21f4fe3a7200?q=80&w=800`;
-          setImgUrl(finalUrl);
-          setIsLoading(false);
-        }
-      } catch (error) {
-        if (isMounted) {
-          // Robust error recovery using the provided fallback
-          setImgUrl(fallback || `https://images.unsplash.com/photo-1524231757912-21f4fe3a7200?q=80&w=800`);
-          setIsLoading(false);
-        }
-      }
+    return () => {
+      timeouts.forEach(t => clearTimeout(t));
     };
+  }, [map, isSidebarOpen, isRightSidebarOpen, isViewingRoute, isExplorerMode]);
 
-    fetchWikiImage();
-    return () => { isMounted = false; };
-  }, [title, fallback]);
+  return null;
+}
 
-  if (isLoading) return <div className={cn("bg-slate-100 dark:bg-slate-800 animate-pulse rounded-lg", className)} />;
-  
+function VenueImage({ src, alt, className }: { src: string, alt: string, className?: string }) {
+  const [error, setError] = useState(false);
+
+  if (!src || error) {
+    return (
+      <div className={cn("bg-slate-100 dark:bg-slate-800 flex flex-col items-center justify-center gap-2 text-slate-400 dark:text-slate-600", className)}>
+        <Compass size={40} className="stroke-1 animate-pulse" />
+        <span className="text-[10px] font-bold uppercase tracking-wider">Görsel Yok / No Image</span>
+      </div>
+    );
+  }
+
   return (
     <img 
-      src={imgUrl || fallback} 
-      alt={title} 
-      className={cn("object-cover rounded-lg", className)} 
-      onError={(e) => {
-        (e.target as HTMLImageElement).src = fallback;
+      src={src} 
+      alt={alt} 
+      className={cn("object-cover", className)} 
+      onError={() => {
+        setError(true);
       }}
+      referrerPolicy="no-referrer"
     />
   );
+}
+
+async function fetchVenues(): Promise<Venue[]> {
+  try {
+    const response = await fetch(
+      "https://docs.google.com/spreadsheets/d/10mdxjbAvN30Biq5g0_YaQ3kHdqIhjkLCRnpI-4keGGE/export?format=tsv"
+    );
+    if (!response.ok) {
+      throw new Error(`Failed to fetch venues: ${response.statusText}`);
+    }
+    const tsvText = await response.text();
+    const lines = tsvText.split("\n").map(line => line.replace(/\r$/, ""));
+    const parsedVenues: Venue[] = [];
+
+    // Skip the header row (index 0) and parse data rows
+    for (let i = 1; i < lines.length; i++) {
+      const rowText = lines[i].trim();
+      if (!rowText) continue;
+      const sutun = lines[i].split("\t");
+
+      let enlemVal = parseFloat(sutun[6] || "0");
+      let boylamVal = parseFloat(sutun[7] || "0");
+
+      if (isNaN(enlemVal) || isNaN(boylamVal) || enlemVal === 0 || boylamVal === 0) {
+        continue;
+      }
+
+      // Automatically handle 10x scaled coordinates in spreadsheet if they exist
+      if (Math.abs(enlemVal) > 90) {
+        enlemVal = enlemVal / 10;
+      }
+      if (Math.abs(boylamVal) > 180) {
+        boylamVal = boylamVal / 10;
+      }
+
+      const v: Venue = {
+        isim: sutun[0]?.trim() || "",
+        isim_en: sutun[1]?.trim() || sutun[0]?.trim() || "",
+        tur: sutun[2]?.trim() || "",
+        tur_en: sutun[3]?.trim() || sutun[2]?.trim() || "",
+        kisa_tarihce: sutun[4]?.trim() || "",
+        kisa_tarihce_en: sutun[5]?.trim() || sutun[4]?.trim() || "",
+        koordinat: {
+          enlem: enlemVal,
+          boylam: boylamVal
+        },
+        gorsel: sutun[8] ? sutun[8].trim() : ""
+      };
+
+      parsedVenues.push(v);
+    }
+    return parsedVenues;
+  } catch (err) {
+    console.error("Error fetching TSV from Google Sheets:", err);
+    return [];
+  }
 }
 
 export default function App() {
@@ -208,6 +250,9 @@ export default function App() {
   const [showHowItWorks, setShowHowItWorks] = useState(false);
   const [lang, setLang] = useState<'tr' | 'en'>('tr');
   const [theme, setTheme] = useState<'light' | 'dark'>('light');
+  
+  const [venues, setVenues] = useState<Venue[]>([]);
+  const [isLoadingVenues, setIsLoadingVenues] = useState<boolean>(true);
 
   const t = TRANSLATIONS[lang];
 
@@ -232,7 +277,13 @@ export default function App() {
   }, [selectedVenue, lang]);
 
   useEffect(() => {
-    console.log(`Loaded ${ISTANBUL_DATA.turistik_mekanlar.length} venues.`);
+    const loadData = async () => {
+      setIsLoadingVenues(true);
+      const data = await fetchVenues();
+      setVenues(data);
+      setIsLoadingVenues(false);
+    };
+    loadData();
   }, []);
 
   const togglePreference = (pref: string) => {
@@ -254,78 +305,90 @@ export default function App() {
     fun: "fa-ticket"
   };
 
-  const drawSmartRoute = () => {
+  const drawSmartRoute = async () => {
     setIsGenerating(true);
     setIsExplorerMode(false);
 
+    let currentVenues = venues;
+    if (isLoadingVenues || currentVenues.length === 0) {
+      try {
+        currentVenues = await fetchVenues();
+        setVenues(currentVenues);
+        setIsLoadingVenues(false);
+      } catch (e) {
+        console.error("Async/await fetch failed:", e);
+      }
+    }
+
     // Simulate a brief calculation time for UX
-    setTimeout(() => {
-      const filteredVenues = ISTANBUL_DATA.turistik_mekanlar.filter(v => {
-        if (preferences.length === 0) return true;
-        
-        // Find venue's icon
-        let venueIcon = "fa-map-marker-alt";
-        for (const key in categoryMapping) {
-          if (v.tur.toLowerCase().includes(key.toLowerCase())) {
-            venueIcon = categoryMapping[key].icon;
-            break;
-          }
-        }
+    await new Promise(resolve => setTimeout(resolve, 1500));
 
-        const matchesPref = preferences.some(p => catToIcon[p] === venueIcon);
-        return matchesPref;
-      });
-
-      if (filteredVenues.length === 0) {
-        alert(lang === 'tr' ? "Seçtiğiniz kriterlere uygun mekan bulunamadı." : "No venues found for your criteria.");
-        setIsGenerating(false);
-        return;
-      }
-
-      let startPos = activeTab === 'otel' 
-        ? { lat: selectedHotel.koordinat.enlem, lng: selectedHotel.koordinat.boylam }
-        : (DISTRICT_COORDS[selectedDistrict] || { lat: 41.015, lng: 28.974 });
-
-      let unvisited = [...filteredVenues];
-      const dailyRoutes: { day: number, venues: Venue[] }[] = [];
+    const filteredVenues = currentVenues.filter(v => {
+      if (preferences.length === 0) return true;
       
-      for (let d = 1; d <= duration; d++) {
-        const dayVenues: Venue[] = [];
-        let currentPos = { ...startPos };
-        const venuesPerDay = pace;
-
-        for (let i = 0; i < venuesPerDay; i++) {
-          if (unvisited.length === 0) break;
-
-          let nearestIdx = -1;
-          let minDistance = Infinity;
-
-          unvisited.forEach((v, idx) => {
-            const dist = getDistance(currentPos.lat, currentPos.lng, v.koordinat.enlem, v.koordinat.boylam);
-            if (dist < minDistance) {
-              minDistance = dist;
-              nearestIdx = idx;
-            }
-          });
-
-          if (nearestIdx !== -1) {
-            const nextVenue = unvisited.splice(nearestIdx, 1)[0];
-            dayVenues.push(nextVenue);
-            currentPos = { lat: nextVenue.koordinat.enlem, lng: nextVenue.koordinat.boylam };
-          }
-        }
-
-        if (dayVenues.length > 0) {
-          dailyRoutes.push({ day: d, venues: dayVenues });
+      // Find venue's icon
+      let venueIcon = "fa-map-marker-alt";
+      for (const key in categoryMapping) {
+        if (v.tur.toLowerCase().includes(key.toLowerCase())) {
+          venueIcon = categoryMapping[key].icon;
+          break;
         }
       }
 
-      setRouteData(dailyRoutes);
+      const matchesPref = preferences.some(p => catToIcon[p] === venueIcon);
+      return matchesPref;
+    });
+
+    if (filteredVenues.length === 0) {
+      alert(lang === 'tr' ? "Seçtiğiniz kriterlere uygun mekan bulunamadı." : "No venues found for your criteria.");
       setIsGenerating(false);
-      setIsSidebarOpen(false);
-      setIsViewingRoute(true);
-      setVisibleDay(null);
-    }, 1500);
+      return;
+    }
+
+    let startPos = activeTab === 'otel' 
+      ? { lat: selectedHotel.koordinat.enlem, lng: selectedHotel.koordinat.boylam }
+      : (DISTRICT_COORDS[selectedDistrict] || { lat: 41.015, lng: 28.974 });
+
+    let unvisited = [...filteredVenues];
+    const dailyRoutes: { day: number, venues: Venue[] }[] = [];
+    
+    for (let d = 1; d <= duration; d++) {
+      const dayVenues: Venue[] = [];
+      let currentPos = { ...startPos };
+      const venuesPerDay = pace;
+
+      for (let i = 0; i < venuesPerDay; i++) {
+        if (unvisited.length === 0) break;
+
+        let nearestIdx = -1;
+        let minDistance = Infinity;
+
+        unvisited.forEach((v, idx) => {
+          const dist = getDistance(currentPos.lat, currentPos.lng, v.koordinat.enlem, v.koordinat.boylam);
+          if (dist < minDistance) {
+            minDistance = dist;
+            nearestIdx = idx;
+          }
+        });
+
+        if (nearestIdx !== -1) {
+          const nextVenue = unvisited.splice(nearestIdx, 1)[0];
+          dayVenues.push(nextVenue);
+          currentPos = { lat: nextVenue.koordinat.enlem, lng: nextVenue.koordinat.boylam };
+        }
+      }
+
+      if (dayVenues.length > 0) {
+        dailyRoutes.push({ day: d, venues: dayVenues });
+      }
+    }
+
+    setRouteData(dailyRoutes);
+    setIsGenerating(false);
+    setIsSidebarOpen(false);
+    setIsViewingRoute(true);
+    setIsRightSidebarOpen(true);
+    setVisibleDay(null);
   };
 
   const clearRoute = () => {
@@ -606,17 +669,22 @@ export default function App() {
                     {routeData.length === 0 && (
                         <button 
                           onClick={drawSmartRoute}
-                          disabled={isGenerating}
+                          disabled={isGenerating || isLoadingVenues}
                           className={cn(
                             "w-full py-6 text-white rounded-[2rem] font-bold text-base uppercase tracking-[0.2em] shadow-[0_25px_60px_rgba(37,99,235,0.4)] transition-all flex items-center justify-center gap-3 relative overflow-hidden group",
-                            isGenerating ? "bg-blue-400 cursor-not-allowed" : "bg-blue-600 hover:bg-blue-700 hover:-translate-y-1 active:translate-y-0"
+                            (isGenerating || isLoadingVenues) ? "bg-blue-400 cursor-not-allowed" : "bg-blue-600 hover:bg-blue-700 hover:-translate-y-1 active:translate-y-0"
                           )}
                         >
-                        <div className={cn("absolute inset-0 bg-gradient-to-r from-transparent via-white/20 to-transparent -translate-x-full", !isGenerating && "group-hover:animate-[shimmer_2s_infinite]")} />
+                        <div className={cn("absolute inset-0 bg-gradient-to-r from-transparent via-white/20 to-transparent -translate-x-full", !(isGenerating || isLoadingVenues) && "group-hover:animate-[shimmer_2s_infinite]")} />
                         {isGenerating ? (
                           <>
                             <div className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin" />
                             {t.calculating}
+                          </>
+                        ) : isLoadingVenues ? (
+                          <>
+                            <div className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                            {lang === 'tr' ? 'VERİLER YÜKLENİYOR...' : 'LOADING DATA...'}
                           </>
                         ) : (
                           <>
@@ -694,108 +762,123 @@ export default function App() {
                   </div>
                 )}
 
-                <MapContainer center={[41.015, 28.97]} zoom={13} zoomControl={false} className="w-full h-full">
-                  <TileLayer 
-                    url={theme === 'dark' ? "https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png" : "https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png"} 
-                    attribution='&copy; CARTO' 
-                  />
-                  
-                  {routeData.length === 0 && ISTANBUL_DATA.turistik_mekanlar.filter(v => {
-                    if (preferences.length === 0) return true;
+                {isLoadingVenues ? (
+                  <div className="w-full h-full bg-slate-50 dark:bg-slate-900 flex flex-col items-center justify-center gap-4 transition-colors">
+                    <div className="w-12 h-12 border-4 border-blue-600/20 border-t-blue-600 rounded-full animate-spin shadow-sm" />
+                    <p className="text-sm font-semibold tracking-wide text-slate-500 dark:text-slate-400">
+                      {lang === 'tr' ? 'Keşfedilecek mekanlar yükleniyor...' : 'Loading venues to explore...'}
+                    </p>
+                  </div>
+                ) : (
+                  <MapContainer center={[41.015, 28.97]} zoom={13} zoomControl={false} className="w-full h-full">
+                    <TileLayer 
+                      url={theme === 'dark' ? "https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png" : "https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png"} 
+                      attribution='&copy; CARTO' 
+                    />
                     
-                    // Find venue's icon
-                    let venueIcon = "fa-map-marker-alt";
-                    for (const key in categoryMapping) {
-                      if (v.tur.toLowerCase().includes(key.toLowerCase())) {
-                        venueIcon = categoryMapping[key].icon;
-                        break;
+                    {routeData.length === 0 && venues.filter(v => {
+                      if (preferences.length === 0) return true;
+                      
+                      // Find venue's icon
+                      let venueIcon = "fa-map-marker-alt";
+                      for (const key in categoryMapping) {
+                        if (v.tur.toLowerCase().includes(key.toLowerCase())) {
+                          venueIcon = categoryMapping[key].icon;
+                          break;
+                        }
                       }
-                    }
 
-                    const matchesPref = preferences.some(p => catToIcon[p] === venueIcon);
-                    return matchesPref;
-                  }).map(v => (
-                    <Marker 
-                      key={v.isim}
-                      position={[v.koordinat.enlem, v.koordinat.boylam]}
-                      icon={createCategoryIcon(v.tur)}
-                      eventHandlers={{ click: () => setSelectedVenue(v) }}
-                    />
-                  ))}
+                      const matchesPref = preferences.some(p => catToIcon[p] === venueIcon);
+                      return matchesPref;
+                    }).map(v => (
+                      <Marker 
+                        key={v.isim}
+                        position={[v.koordinat.enlem, v.koordinat.boylam]}
+                        icon={createCategoryIcon(v.tur)}
+                        eventHandlers={{ click: () => setSelectedVenue(v) }}
+                      />
+                    ))}
 
-                  {/* Start Point Marker (Hotel or District) */}
-                  {(routeData.length > 0 || (activeTab === 'otel' && selectedHotel) || (activeTab === 'semt' && selectedDistrict && DISTRICT_COORDS[selectedDistrict])) && (
-                    <Marker 
-                      position={activeTab === 'otel' ? [selectedHotel.koordinat.enlem, selectedHotel.koordinat.boylam] : [DISTRICT_COORDS[selectedDistrict]?.lat || 41.0082, DISTRICT_COORDS[selectedDistrict]?.lng || 28.9784]}
-                      zIndexOffset={5000}
-                      icon={L.divIcon({
-                        className: 'start-marker',
-                        html: `
-                          <div class="user-location-marker" style="position: relative; display: flex; flex-direction: column; align-items: center;">
-                            <div style="background-color: #3b82f6; color: white; width: 60px; height: 60px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 30px; border: 4px solid white; box-shadow: 0 8px 24px rgba(59,130,246,0.6); z-index: 2; transition: all 0.3s ease;">
-                              <i class="fa-solid fa-hotel"></i>
+                    {/* Start Point Marker (Hotel or District) */}
+                    {(routeData.length > 0 || (activeTab === 'otel' && selectedHotel) || (activeTab === 'semt' && selectedDistrict && DISTRICT_COORDS[selectedDistrict])) && (
+                      <Marker 
+                        position={activeTab === 'otel' ? [selectedHotel.koordinat.enlem, selectedHotel.koordinat.boylam] : [DISTRICT_COORDS[selectedDistrict]?.lat || 41.0082, DISTRICT_COORDS[selectedDistrict]?.lng || 28.9784]}
+                        zIndexOffset={5000}
+                        icon={L.divIcon({
+                          className: 'start-marker',
+                          html: `
+                            <div class="user-location-marker" style="position: relative; display: flex; flex-direction: column; align-items: center;">
+                              <div style="background-color: #3b82f6; color: white; width: 60px; height: 60px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 30px; border: 4px solid white; box-shadow: 0 8px 24px rgba(59,130,246,0.6); z-index: 2; transition: all 0.3s ease;">
+                                <i class="fa-solid fa-hotel"></i>
+                              </div>
+                              <div style="position: absolute; bottom: -28px; background: #3b82f6; color: white; padding: 4px 12px; border-radius: 12px; font-size: 9px; font-weight: 900; white-space: nowrap; box-shadow: 0 4px 12px rgba(0,0,0,0.2); border: 2px solid white; z-index: 3; text-transform: uppercase; letter-spacing: 0.1em;">
+                                ${lang === 'tr' ? 'KONAKLAMA' : 'YOUR STAY'}
+                              </div>
+                              <div style="position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); width: 80px; height: 80px; border-radius: 50%; background: #3b82f6; opacity: 0.3; z-index: 1;"></div>
                             </div>
-                            <div style="position: absolute; bottom: -28px; background: #3b82f6; color: white; padding: 4px 12px; border-radius: 12px; font-size: 9px; font-weight: 900; white-space: nowrap; box-shadow: 0 4px 12px rgba(0,0,0,0.2); border: 2px solid white; z-index: 3; text-transform: uppercase; letter-spacing: 0.1em;">
-                              ${lang === 'tr' ? 'KONAKLAMA' : 'YOUR STAY'}
-                            </div>
-                            <div style="position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); width: 80px; height: 80px; border-radius: 50%; background: #3b82f6; opacity: 0.3; z-index: 1;"></div>
-                          </div>
-                        `,
-                        iconSize: [60, 60],
-                        iconAnchor: [30, 30],
-                      })}
-                      eventHandlers={{
-                        click: () => setSelectedVenue(null) // Close large modal if clicking accommodation
-                      }}
-                    />
-                  )}
+                          `,
+                          iconSize: [60, 60],
+                          iconAnchor: [30, 30],
+                        })}
+                        eventHandlers={{
+                          click: () => setSelectedVenue(null) // Close large modal if clicking accommodation
+                        }}
+                      />
+                    )}
 
-                  {routeData.map((day, dIdx) => {
-                    if (visibleDay !== null && day.day !== visibleDay) return null;
-                    const positions = day.venues.map(v => [v.koordinat.enlem, v.koordinat.boylam] as [number, number]);
-                    
-                    return (
-                      <React.Fragment key={dIdx}>
-                        <Polyline 
-                          positions={positions}
-                          pathOptions={{ 
-                            color: dayColors[dIdx % dayColors.length], 
-                            weight: 8, 
-                            opacity: 0.2, 
-                            lineCap: 'round',
-                            lineJoin: 'round'
-                          }}
-                        />
-                        <Polyline 
-                          positions={positions}
-                          pathOptions={{ 
-                            color: dayColors[dIdx % dayColors.length], 
-                            weight: 4, 
-                            opacity: 0.9, 
-                            lineCap: 'round',
-                            lineJoin: 'round',
-                            dashArray: '10, 15',
-                            className: 'ant-path'
-                          }}
-                        />
-                        {day.venues.map((v, vIdx) => (
-                          <Marker 
-                            key={`${dIdx}-${vIdx}`}
-                            position={[v.koordinat.enlem, v.koordinat.boylam]}
-                            icon={createCategoryIcon(v.tur, `${dIdx + 1}. ${t.day} - ${vIdx + 1}`, dayColors[dIdx % dayColors.length])}
-                            zIndexOffset={2000}
-                            eventHandlers={{
-                              click: () => setSelectedVenue(v)
+                    {routeData.map((day, dIdx) => {
+                      if (visibleDay !== null && day.day !== visibleDay) return null;
+                      const positions = day.venues.map(v => [v.koordinat.enlem, v.koordinat.boylam] as [number, number]);
+                      
+                      return (
+                        <React.Fragment key={dIdx}>
+                          <Polyline 
+                            positions={positions}
+                            pathOptions={{ 
+                              color: dayColors[dIdx % dayColors.length], 
+                              weight: 8, 
+                              opacity: 0.2, 
+                              lineCap: 'round',
+                              lineJoin: 'round'
                             }}
                           />
-                        ))}
-                      </React.Fragment>
-                    );
-                  })}
+                          <Polyline 
+                            positions={positions}
+                            pathOptions={{ 
+                              color: dayColors[dIdx % dayColors.length], 
+                              weight: 4, 
+                              opacity: 0.9, 
+                              lineCap: 'round',
+                              lineJoin: 'round',
+                              dashArray: '10, 15',
+                              className: 'ant-path'
+                            }}
+                          />
+                          {day.venues.map((v, vIdx) => (
+                            <Marker 
+                              key={`${dIdx}-${vIdx}`}
+                              position={[v.koordinat.enlem, v.koordinat.boylam]}
+                              icon={createCategoryIcon(v.tur, `${dIdx + 1}. ${t.day} - ${vIdx + 1}`, dayColors[dIdx % dayColors.length])}
+                              zIndexOffset={2000}
+                              eventHandlers={{
+                                click: () => setSelectedVenue(v)
+                              }}
+                            />
+                          ))}
+                        </React.Fragment>
+                      );
+                    })}
 
-                  <MapUpdater center={selectedVenue ? [selectedVenue.koordinat.enlem, selectedVenue.koordinat.boylam] : null} />
-                  <RouteFitter routeData={visibleDay !== null ? routeData.filter(d => d.day === visibleDay) : routeData} />
-                </MapContainer>
+                    <MapUpdater center={selectedVenue ? [selectedVenue.koordinat.enlem, selectedVenue.koordinat.boylam] : null} />
+                    <RouteFitter routeData={visibleDay !== null ? routeData.filter(d => d.day === visibleDay) : routeData} />
+                    <MapResizer 
+                      isSidebarOpen={isSidebarOpen}
+                      isRightSidebarOpen={isRightSidebarOpen}
+                      isViewingRoute={isViewingRoute}
+                      isExplorerMode={isExplorerMode}
+                    />
+                  </MapContainer>
+                )}
 
                 {/* Venue Detail Overlay */}
                 <AnimatePresence>
@@ -809,9 +892,9 @@ export default function App() {
                     >
                       <div className="bg-white dark:bg-slate-900 rounded-[3rem] shadow-[0_30px_60px_-12px_rgba(0,0,0,0.4)] overflow-hidden border border-slate-100 dark:border-slate-800 flex flex-col md:flex-row h-auto md:h-72">
                         <div className="w-full md:w-1/2 h-48 md:h-full relative group">
-                          <WikiImage 
-                            title={lang === 'tr' ? selectedVenue.isim : (selectedVenue.isim_en || selectedVenue.isim)} 
-                            fallback={(selectedVenue as any).gorsel || DEFAULT_IMAGE} 
+                          <VenueImage 
+                            src={selectedVenue.gorsel || ""} 
+                            alt={lang === 'tr' ? selectedVenue.isim : (selectedVenue.isim_en || selectedVenue.isim)} 
                             className="w-full h-full transition-transform duration-700 group-hover:scale-110" 
                           />
                           <div className="absolute inset-0 bg-gradient-to-t from-black/80 to-transparent" />
@@ -874,9 +957,28 @@ export default function App() {
                       {/* Toggle Handle */}
                       <button 
                         onClick={() => setIsRightSidebarOpen(!isRightSidebarOpen)}
-                        className="absolute right-full top-24 w-12 h-12 bg-white dark:bg-slate-900 border border-slate-100 dark:border-slate-800 rounded-l-2xl flex items-center justify-center text-blue-600 shadow-xl"
+                        className={cn(
+                          "absolute right-full top-24 h-14 bg-white dark:bg-slate-900 border border-slate-200/80 dark:border-slate-800 rounded-l-3xl flex items-center justify-center text-blue-600 shadow-2xl transition-all duration-300 hover:text-blue-700 active:scale-95 hover:bg-slate-50 dark:hover:bg-slate-800/80 group",
+                          isRightSidebarOpen 
+                            ? "w-12" 
+                            : "w-auto px-6 gap-3 border-r-0"
+                        )}
+                        title={isRightSidebarOpen ? (lang === 'tr' ? 'Kapat' : 'Close') : (lang === 'tr' ? 'Planı Gör' : 'View Plan')}
                       >
-                        {isRightSidebarOpen ? <ChevronRight size={20} /> : <div className="flex items-center gap-2 pr-2"><div className="w-2 h-2 bg-blue-600 rounded-full animate-pulse" /><span className="text-[10px] font-black uppercase whitespace-nowrap">{lang === 'tr' ? 'PLANI GÖR' : 'VIEW PLAN'}</span></div>}
+                        {isRightSidebarOpen ? (
+                          <ChevronRight size={20} className="transition-transform group-hover:translate-x-0.5" />
+                        ) : (
+                          <div className="flex items-center gap-2.5">
+                            <i className="fa-solid fa-calendar-day text-blue-600 text-xs animate-pulse" />
+                            <span className="text-[11px] font-black uppercase tracking-[0.15em] text-slate-800 dark:text-slate-200 whitespace-nowrap">
+                              {lang === 'tr' ? 'PLANI GÖR' : 'VIEW PLAN'}
+                            </span>
+                            <div className="flex h-2 w-2 relative">
+                              <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-blue-400 opacity-75"></span>
+                              <span className="relative inline-flex rounded-full h-2 w-2 bg-blue-600"></span>
+                            </div>
+                          </div>
+                        )}
                       </button>
 
                       <div className="flex-1 flex flex-col w-[420px]">
@@ -885,7 +987,7 @@ export default function App() {
                             <h2 className="text-[13px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-[0.2em]">
                               {lang === 'tr' ? 'GÜNLÜK ROTA PLANI' : 'DAILY ROUTE PLAN'}
                             </h2>
-                            <button onClick={() => setIsViewingRoute(false)} className="text-slate-400 hover:text-red-500 transition-colors">
+                            <button onClick={() => setIsRightSidebarOpen(false)} className="text-slate-400 hover:text-red-500 transition-colors">
                               <X size={20} />
                             </button>
                           </div>
