@@ -449,8 +449,13 @@ export default function App() {
       utterance.lang = lang === 'tr' ? 'tr-TR' : 'en-US';
       
       // Set the pitch and slightly slower rate for high-quality human narration tone
-      utterance.pitch = 1.05;
-      utterance.rate = 0.95;
+      if (lang === 'tr') {
+        utterance.pitch = 0.98; // Warmer, slightly deeper pitch sounds significantly more human-like and natural
+        utterance.rate = 0.98;  // Natural flow rate for Turkish narration
+      } else {
+        utterance.pitch = 1.05;
+        utterance.rate = 0.95;
+      }
 
       // Smart filtering priority arrays to prioritize the absolute best premium/native free voices
       const allVoices = window.speechSynthesis.getVoices();
@@ -458,10 +463,19 @@ export default function App() {
 
       if (lang === 'tr') {
         selectedVoice = 
+          // 1. Premium Microsoft Edge Online Natural Female Voices (extremely organic/human)
+          allVoices.find(v => v.lang.includes('TR') && v.name.includes('Online') && (v.name.includes('Dilara') || v.name.includes('Yasmin') || v.name.includes('Seda'))) ||
+          allVoices.find(v => v.lang.includes('TR') && v.name.includes('Online') && v.name.includes('Tolga')) || // fallback online male
+          // 2. High Quality Apple macOS/iOS Native Female Voices (Yelda is exceptionally premium, Seda is great)
           allVoices.find(v => v.lang.startsWith('tr') && (v.name.includes('Yelda') || v.name.includes('Seda') || v.name.includes('Dilara'))) ||
-          allVoices.find(v => v.lang.startsWith('tr') && v.name.includes('Natural') && !v.name.includes('Tolga') && !v.name.includes('Cem')) ||
+          // 3. Local Natural/Premium Female Voices
+          allVoices.find(v => v.lang.startsWith('tr') && v.name.includes('Natural') && (v.name.includes('Dilara') || v.name.includes('Yasmin') || v.name.includes('Seda') || v.name.includes('Hazel'))) ||
+          allVoices.find(v => v.lang.startsWith('tr') && v.name.includes('Natural')) ||
+          // 4. Microsoft Windows Standard Female Turkish Voice (Hazel/Dilara/Yasmin is much better than Tolga/Cem)
+          allVoices.find(v => v.lang.startsWith('tr') && v.name.includes('Hazel')) ||
+          allVoices.find(v => v.lang.startsWith('tr') && (v.name.includes('Dilara') || v.name.includes('Yasmin'))) ||
+          // 5. Google / Desktop Female or standard voices (excluding highly robotic Tolga/Cem where possible)
           allVoices.find(v => v.lang.startsWith('tr') && v.name.includes('Google') && !v.name.includes('Tolga') && !v.name.includes('Cem')) ||
-          allVoices.find(v => v.lang.startsWith('tr') && v.name.includes('Microsoft') && !v.name.includes('Tolga')) ||
           allVoices.find(v => v.lang.startsWith('tr') && !v.name.includes('Tolga') && !v.name.includes('Cem')) ||
           allVoices.find(v => v.lang.startsWith('tr'));
       } else {
@@ -516,6 +530,38 @@ export default function App() {
       }
     };
   }, [activeAudioVenue, isAudioPlaying, lang, voices, speechOffsetCharIndex]);
+
+  // Smooth virtual time tracking to back up onboundary on all devices, browsers and platforms
+  useEffect(() => {
+    if (!isAudioPlaying || !activeAudioVenue) return;
+
+    const text = getVenueNarration(activeAudioVenue);
+    if (!text) return;
+
+    // Standard character-based speaking speeds:
+    // English is slightly faster, Turkish flows more smoothly
+    const charsPerSecond = lang === 'tr' ? 12.5 : 15.0;
+    const updateRateMs = 150; 
+    const charsPerStep = charsPerSecond * (updateRateMs / 1000);
+
+    let currentChars = speechOffsetCharIndex;
+
+    const interval = setInterval(() => {
+      if (typeof window !== 'undefined' && 'speechSynthesis' in window && !window.speechSynthesis.speaking) {
+        return;
+      }
+
+      currentChars += charsPerStep;
+      const computedProgress = Math.min(100, (currentChars / text.length) * 100);
+      setAudioProgress(computedProgress);
+
+      if (computedProgress >= 100) {
+        clearInterval(interval);
+      }
+    }, updateRateMs);
+
+    return () => clearInterval(interval);
+  }, [isAudioPlaying, activeAudioVenue, lang, speechOffsetCharIndex]);
 
   // Handler to seek to any percentage of the voice narration
   const handleSeek = (percentage: number) => {
@@ -1296,13 +1342,13 @@ export default function App() {
                     <button 
                       onClick={() => setIsSidebarOpen(false)} 
                       className={cn(
-                        "h-10 w-10 rounded-xl flex items-center justify-center active:scale-95 transition-all border",
+                        "h-10 w-10 rounded-xl flex items-center justify-center active:scale-95 transition-all border shadow-[0_0_12px_rgba(255,255,255,0.35)]",
                         theme === 'dark' 
-                          ? "bg-slate-800 hover:bg-slate-700/80 text-slate-300 hover:text-red-400 border-slate-700" 
-                          : "bg-slate-100 hover:bg-slate-200 text-slate-700 hover:text-red-600 border-slate-250"
+                          ? "bg-slate-800 hover:bg-slate-700/80 text-white hover:text-red-400 border-slate-700" 
+                          : "bg-slate-900 text-white hover:bg-slate-800 border-slate-950"
                       )}
                     >
-                      <X size={18} />
+                      <X size={18} strokeWidth={3} className="text-white drop-shadow-[0_0_5px_rgba(255,255,255,0.9)]" />
                     </button>
                   </div>
                 </div>
@@ -1880,11 +1926,14 @@ export default function App() {
                           </div>
                         </div>
                         <div className="flex-1 p-6 md:p-8 flex flex-col justify-between relative bg-white dark:bg-slate-900">
-                          <button onClick={() => setSelectedVenue(null)} className="absolute right-6 top-6 p-2 text-slate-300 dark:text-slate-600 hover:text-blue-600 transition-colors">
-                            <X size={20} />
+                          <button 
+                            onClick={() => setSelectedVenue(null)} 
+                            className="absolute right-6 top-6 h-8 w-8 rounded-full bg-slate-950/80 dark:bg-slate-800/90 text-white flex items-center justify-center shadow-[0_0_15px_rgba(255,255,255,0.45)] hover:shadow-[0_0_20px_rgba(255,255,255,0.85)] active:scale-95 transition-all border border-slate-700/50 hover:scale-110 z-10"
+                          >
+                            <X size={15} strokeWidth={3} className="text-white drop-shadow-[0_0_5px_rgba(255,255,255,0.95)]" />
                           </button>
                           
-                          <div className="pr-4">
+                          <div className="pr-12 md:pr-14">
                             <p className="text-sm text-slate-500 dark:text-slate-400 font-medium leading-relaxed italic line-clamp-3">
                               "{lang === 'tr' ? selectedVenue.kisa_tarihce : (selectedVenue.kisa_tarihce_en || selectedVenue.kisa_tarihce)}"
                             </p>
@@ -2408,10 +2457,14 @@ export default function App() {
             initial={{ y: 50, opacity: 0, scale: 0.95 }}
             animate={{ y: 0, opacity: 1, scale: 1 }}
             exit={{ y: 50, opacity: 0, scale: 0.95 }}
-            className="fixed bottom-[110px] lg:bottom-10 right-4 lg:right-10 z-[3200] w-[92%] sm:w-[380px] bg-slate-950/95 text-white p-5 rounded-3xl shadow-[0_30px_60px_rgba(0,0,0,0.5)] border border-slate-800/80 backdrop-blur-2xl"
+            drag
+            dragMomentum={false}
+            dragElastic={0.15}
+            whileDrag={{ scale: 1.02 }}
+            className="fixed bottom-[110px] lg:bottom-10 right-4 lg:right-10 z-[3200] w-[92%] sm:w-[380px] bg-slate-950/95 text-white p-5 rounded-3xl shadow-[0_30px_60px_rgba(0,0,0,0.6)] border border-slate-800/80 backdrop-blur-2xl cursor-grab active:cursor-grabbing select-none"
           >
             <div className="flex items-center justify-between pb-3 border-b border-slate-800/80 mb-3.5">
-              <div className="flex items-center gap-2.5">
+              <div className="flex items-center gap-2.5 select-none pointer-events-none">
                 <div className="w-8 h-8 rounded-full bg-emerald-500/20 text-emerald-400 flex items-center justify-center animate-pulse">
                   <Headphones size={13} className="text-emerald-400 shrink-0" />
                 </div>
@@ -2419,7 +2472,7 @@ export default function App() {
                   <h4 className="text-[10px] font-black tracking-widest text-emerald-400 uppercase">
                     {lang === 'tr' ? 'SESLİ REHBER AKTİF' : 'AUDIO TOUR ACTIVE'}
                   </h4>
-                  <div className="text-xs font-bold leading-tight line-clamp-1 max-w-[180px]">
+                  <div className="text-xs font-bold leading-tight line-clamp-1 max-w-[140px]">
                     {lang === 'tr' ? activeAudioVenue.isim : (activeAudioVenue.isim_en || activeAudioVenue.isim)}
                   </div>
                 </div>
@@ -2429,7 +2482,7 @@ export default function App() {
                   setIsAudioPlaying(false);
                   setActiveAudioVenue(null);
                 }}
-                className="p-1.5 px-3 rounded-xl bg-slate-800 text-slate-400 hover:text-red-500 transition-all text-[9px] font-black uppercase tracking-wider active:scale-95"
+                className="p-1.5 px-3 rounded-xl bg-slate-900 border border-slate-750 text-white font-black uppercase tracking-wider text-[9px] transition-all duration-300 hover:scale-105 active:scale-95 shadow-[0_0_12px_rgba(255,255,255,0.25)] hover:shadow-[0_0_20px_rgba(255,255,255,0.6)] drop-shadow-[0_0_4px_rgba(255,255,255,0.7)]"
               >
                 {lang === 'tr' ? 'AKTARIMI KAPAT' : 'CLOSE AUDIO'}
               </button>
