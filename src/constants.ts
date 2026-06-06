@@ -70,7 +70,7 @@ export const ISTANBUL_DATA = {
 export const TRANSLATIONS = {
   tr: {
     title: "İstanbul Akıllı Rehber", discover: "İstanbul'u Keşfet", subtitle: "Sizin için en mantıklı gezi rotasını hazırlıyoruz.",
-    start: "Hemen Başla", planner: "Seyahat Planlayıcı", hotelStart: "Otelden Başla", districtStart: "Semtten Başla",
+    start: "Hemen Başla", planner: "Seyahat Planlayıcı", hotelStart: "Otelden Başla", districtStart: "Semtten Başla", locationStart: "Konumdan Başla",
     hotelLabel: "Konakladığınız Otel", districtLabel: "Başlangıç Semti", duration: "Süre", days: "GÜN",
     interests: "İlgi Alanları", dailyPace: "Günlük Tempo", dailyPaceTooltip: "Bu seçenekle, bir gün içerisinde toplam kaç farklı yeri ziyaret etmek istediğinizi belirleyebilirsiniz.", paceScale: ["Yavaş", "Normal", "Yoğun", "Zirve"],
     createRoute: "Rota Çiz", calculating: "Hesaplanıyor...", dailyRoute: "Günlük Rota Planınız", day: "GÜN",
@@ -107,7 +107,7 @@ export const TRANSLATIONS = {
   },
   en: {
     title: "Istanbul Smart Guide", discover: "Discover Istanbul", subtitle: "We prepare the most logical travel route for you.",
-    start: "Start Now", planner: "Travel Planner", hotelStart: "Start from Hotel", districtStart: "Start from District",
+    start: "Start Now", planner: "Travel Planner", hotelStart: "Start from Hotel", districtStart: "Start from District", locationStart: "Start from Location",
     hotelLabel: "Your Hotel", districtLabel: "Starting District", duration: "Duration", days: "DAYS",
     interests: "Interests", dailyPace: "Daily Pace", dailyPaceTooltip: "With this option, you can determine how many different places you want to visit in total in one day.", paceScale: ["Relaxed", "Normal", "Active", "Peak"],
     createRoute: "Create Route", calculating: "Calculating...", dailyRoute: "Your Daily Route Plan", day: "DAY",

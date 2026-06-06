@@ -106,6 +106,16 @@ function MapUpdater({ center }: { center: [number, number] | null }) {
   return null;
 }
 
+function MapFlyer({ target }: { target: { center: [number, number], zoom: number } | null }) {
+  const map = useMap();
+  useEffect(() => {
+    if (target) {
+      map.flyTo(target.center, target.zoom, { duration: 1.5 });
+    }
+  }, [target, map]);
+  return null;
+}
+
 function RouteFitter({ routeData }: { routeData: { day: number, venues: Venue[] }[] }) {
   const map = useMap();
   useEffect(() => {
@@ -288,9 +298,12 @@ const loadHtml2Pdf = (): Promise<any> => {
 
 export default function App() {
   const [activeScreen, setActiveScreen] = useState<'landing' | 'app'>('landing');
-  const [activeTab, setActiveTab] = useState<'otel' | 'semt'>('otel');
+  const [activeTab, setActiveTab] = useState<'otel' | 'semt' | 'konum'>('otel');
   const [selectedHotel, setSelectedHotel] = useState<Hotel>(ISTANBUL_DATA.populer_oteller[0]);
   const [selectedDistrict, setSelectedDistrict] = useState<string>("Fatih");
+  const [userLocation, setUserLocation] = useState<{ lat: number, lng: number } | null>(null);
+  const [isLocating, setIsLocating] = useState(false);
+  const [mapCenterState, setMapCenterState] = useState<{ center: [number, number], zoom: number } | null>(null);
   const [duration, setDuration] = useState<number>(3);
   const [pace, setPace] = useState<number>(4);
   const [preferences, setPreferences] = useState<string[]>([]);
@@ -311,10 +324,18 @@ export default function App() {
   const [activeAudioVenue, setActiveAudioVenue] = useState<Venue | null>(null);
   const [isAudioPlaying, setIsAudioPlaying] = useState<boolean>(false);
   const [audioProgress, setAudioProgress] = useState<number>(0);
+  const [speechOffsetCharIndex, setSpeechOffsetCharIndex] = useState<number>(0);
+
+  // Reset audio playback seek offset when a different venue is loaded
+  useEffect(() => {
+    setSpeechOffsetCharIndex(0);
+    setAudioProgress(0);
+  }, [activeAudioVenue]);
 
   // Sharing, toast notification, auto-drawing, and download states
   const [toastMessage, setToastMessage] = useState<string | null>(null);
   const [isDownloadingPDF, setIsDownloadingPDF] = useState<boolean>(false);
+  const [voices, setVoices] = useState<SpeechSynthesisVoice[]>([]);
   const [shouldAutoDraw, setShouldAutoDraw] = useState<boolean>(false);
 
   // Weather Support & Optimization States
@@ -391,53 +412,96 @@ export default function App() {
     }, 3000);
   };
 
+  // Load and keep the live speechSynthesis voice list in sync (even across async loads)
   useEffect(() => {
-    let interval: NodeJS.Timeout;
-    if (isAudioPlaying) {
-      interval = setInterval(() => {
-        setAudioProgress(prev => {
-          if (prev >= 100) {
-            setIsAudioPlaying(false);
-            if ('speechSynthesis' in window) {
-              window.speechSynthesis.cancel();
-            }
-            return 0;
-          }
-          return prev + 1;
-        });
-      }, 300);
-    }
-    return () => clearInterval(interval);
-  }, [isAudioPlaying]);
+    if (typeof window === 'undefined' || !('speechSynthesis' in window)) return;
+    
+    const updateVoices = () => {
+      setVoices(window.speechSynthesis.getVoices());
+    };
+    
+    updateVoices();
+    window.speechSynthesis.onvoiceschanged = updateVoices;
+    
+    return () => {
+      if (window.speechSynthesis) {
+        window.speechSynthesis.onvoiceschanged = null;
+      }
+    };
+  }, []);
 
-  // SpeechSynthesis audio engine implementation for premium audio guide experience
+  // SpeechSynthesis audio engine implementation for premium audio guide experience with real feedback
   useEffect(() => {
     if (!('speechSynthesis' in window)) return;
+
+    let isCurrent = true;
 
     if (activeAudioVenue && isAudioPlaying) {
       window.speechSynthesis.cancel(); // cancel any active narration first
       
-      const text = getVenueNarration(activeAudioVenue);
-      const utterance = new SpeechSynthesisUtterance(text);
+      const fullText = getVenueNarration(activeAudioVenue);
+      const totalTextLength = fullText.length;
+      
+      // Sliced text starting from the requested offset character index
+      const textToSpeak = fullText.slice(speechOffsetCharIndex);
+      
+      const utterance = new SpeechSynthesisUtterance(textToSpeak);
       utterance.lang = lang === 'tr' ? 'tr-TR' : 'en-US';
-      utterance.rate = 1.05; // slightly faster and pleasant pace
+      
+      // Set the pitch and slightly slower rate for high-quality human narration tone
+      utterance.pitch = 1.05;
+      utterance.rate = 0.95;
 
-      // Try to find native voices
-      const voices = window.speechSynthesis.getVoices();
-      const voice = voices.find(v => 
-        lang === 'tr' ? v.lang.startsWith('tr') : v.lang.startsWith('en')
-      );
-      if (voice) {
-        utterance.voice = voice;
+      // Smart filtering priority arrays to prioritize the absolute best premium/native free voices
+      const allVoices = window.speechSynthesis.getVoices();
+      let selectedVoice: SpeechSynthesisVoice | null = null;
+
+      if (lang === 'tr') {
+        selectedVoice = 
+          allVoices.find(v => v.lang.startsWith('tr') && (v.name.includes('Yelda') || v.name.includes('Seda') || v.name.includes('Dilara'))) ||
+          allVoices.find(v => v.lang.startsWith('tr') && v.name.includes('Natural') && !v.name.includes('Tolga') && !v.name.includes('Cem')) ||
+          allVoices.find(v => v.lang.startsWith('tr') && v.name.includes('Google') && !v.name.includes('Tolga') && !v.name.includes('Cem')) ||
+          allVoices.find(v => v.lang.startsWith('tr') && v.name.includes('Microsoft') && !v.name.includes('Tolga')) ||
+          allVoices.find(v => v.lang.startsWith('tr') && !v.name.includes('Tolga') && !v.name.includes('Cem')) ||
+          allVoices.find(v => v.lang.startsWith('tr'));
+      } else {
+        selectedVoice = 
+          allVoices.find(v => v.lang.startsWith('en') && v.name.includes('Natural')) ||
+          allVoices.find(v => v.lang.startsWith('en') && v.name.includes('Google US English')) ||
+          allVoices.find(v => v.lang.startsWith('en') && v.name.includes('Aria')) ||
+          allVoices.find(v => v.lang.startsWith('en') && v.name.includes('Samantha')) ||
+          allVoices.find(v => v.lang.startsWith('en') && v.name.includes('Premium')) ||
+          allVoices.find(v => v.lang.startsWith('en') && v.name.includes('Google')) ||
+          allVoices.find(v => v.lang.startsWith('en'));
       }
 
-      utterance.onend = () => {
-        setIsAudioPlaying(false);
-        setAudioProgress(100);
+      if (selectedVoice) {
+        utterance.voice = selectedVoice;
+      }
+
+      utterance.onboundary = (event) => {
+        if (!isCurrent) return;
+        if (event.name === 'word') {
+          // absolute char index is offset + the relative charIndex spoken in this slice
+          const absoluteCharIndex = speechOffsetCharIndex + event.charIndex;
+          const percentage = totalTextLength > 0 ? (absoluteCharIndex / totalTextLength) * 100 : 0;
+          setAudioProgress(Math.min(100, Math.max(0, percentage)));
+        }
       };
 
-      utterance.onerror = () => {
+      utterance.onend = () => {
+        if (!isCurrent) return;
         setIsAudioPlaying(false);
+        setAudioProgress(100);
+        setSpeechOffsetCharIndex(0);
+      };
+
+      utterance.onerror = (e) => {
+        if (!isCurrent) return;
+        // Don't turn off if it was just interrupted/cancelled deliberately for seeking
+        if (e.error !== 'interrupted') {
+          setIsAudioPlaying(false);
+        }
       };
 
       window.speechSynthesis.speak(utterance);
@@ -446,11 +510,42 @@ export default function App() {
     }
 
     return () => {
+      isCurrent = false;
       if ('speechSynthesis' in window) {
         window.speechSynthesis.cancel();
       }
     };
-  }, [activeAudioVenue, isAudioPlaying, lang]);
+  }, [activeAudioVenue, isAudioPlaying, lang, voices, speechOffsetCharIndex]);
+
+  // Handler to seek to any percentage of the voice narration
+  const handleSeek = (percentage: number) => {
+    if (!activeAudioVenue) return;
+    const fullText = getVenueNarration(activeAudioVenue);
+    const totalTextLength = fullText.length;
+    
+    // Find approximate char position
+    let targetCharIndex = Math.floor((percentage / 100) * totalTextLength);
+    
+    // Find the nearest word boundary/space to avoid splitting words
+    if (targetCharIndex > 0 && targetCharIndex < totalTextLength) {
+      const spaceBefore = fullText.lastIndexOf(' ', targetCharIndex);
+      const spaceAfter = fullText.indexOf(' ', targetCharIndex);
+      
+      if (spaceBefore !== -1 && (spaceAfter === -1 || (targetCharIndex - spaceBefore < spaceAfter - targetCharIndex))) {
+        targetCharIndex = spaceBefore + 1;
+      } else if (spaceAfter !== -1) {
+        targetCharIndex = spaceAfter + 1;
+      }
+    }
+    
+    setSpeechOffsetCharIndex(targetCharIndex);
+    setAudioProgress(percentage);
+    
+    // Auto start playing when seeking (like standard media players)
+    if (!isAudioPlaying) {
+      setIsAudioPlaying(true);
+    }
+  };
 
   const getVenueNarration = (venue: Venue) => {
     const isTr = lang === 'tr';
@@ -536,9 +631,20 @@ export default function App() {
 
       let hasRouteParams = false;
 
-      if (tabParam === 'otel' || tabParam === 'semt') {
-        setActiveTab(tabParam);
+      if (tabParam === 'otel' || tabParam === 'semt' || tabParam === 'konum') {
+        setActiveTab(tabParam as any);
         hasRouteParams = true;
+      }
+      if (tabParam === 'konum') {
+        const lat = params.get('lat');
+        const lng = params.get('lng');
+        if (lat && lng) {
+          const parsedLat = parseFloat(lat);
+          const parsedLng = parseFloat(lng);
+          if (!isNaN(parsedLat) && !isNaN(parsedLng)) {
+            setUserLocation({ lat: parsedLat, lng: parsedLng });
+          }
+        }
       }
       if (hotelParam) {
         const foundHotel = ISTANBUL_DATA.populer_oteller.find(
@@ -624,8 +730,11 @@ export default function App() {
       urlParams.set('tab', activeTab);
       if (activeTab === 'otel') {
         urlParams.set('hotel', selectedHotel?.isim || '');
-      } else {
+      } else if (activeTab === 'semt') {
         urlParams.set('district', selectedDistrict || '');
+      } else if (activeTab === 'konum' && userLocation) {
+        urlParams.set('lat', userLocation.lat.toString());
+        urlParams.set('lng', userLocation.lng.toString());
       }
       urlParams.set('days', duration.toString());
       urlParams.set('tempo', pace.toString());
@@ -674,8 +783,16 @@ export default function App() {
       return;
     }
 
+    if (activeTab === 'konum' && !userLocation) {
+      alert(lang === 'tr' ? "Lütfen önce konumunuzu alın veya konum izni verin." : "Please fetch your location first or grant location permission.");
+      setIsGenerating(false);
+      return;
+    }
+
     let startPos = activeTab === 'otel' 
       ? { lat: selectedHotel.koordinat.enlem, lng: selectedHotel.koordinat.boylam }
+      : activeTab === 'konum' && userLocation
+      ? userLocation
       : (DISTRICT_COORDS[selectedDistrict] || { lat: 41.015, lng: 28.974 });
 
     const weatherList = generateMockWeather(duration);
@@ -759,6 +876,50 @@ export default function App() {
     setVisibleDay(null);
     setDailyWeather([]);
     setWeatherOptimized(false);
+    setSelectedVenue(null);
+    setMapCenterState({ center: [41.015, 28.97], zoom: 13 });
+  };
+
+  const handleStartFromLocation = () => {
+    setActiveTab('konum');
+    setRouteData([]);
+    setIsViewingRoute(false);
+    
+    if (userLocation) {
+      setMapCenterState({ center: [userLocation.lat, userLocation.lng], zoom: 15 });
+      return;
+    }
+
+    setIsLocating(true);
+    if (!navigator.geolocation) {
+      alert(lang === 'tr' ? "Tarayıcınız konum servisini desteklemiyor." : "Geolocation is not supported by your browser.");
+      setActiveTab('otel');
+      setIsLocating(false);
+      return;
+    }
+
+    navigator.geolocation.getCurrentPosition(
+      (position) => {
+        const { latitude, longitude } = position.coords;
+        const coords = { lat: latitude, lng: longitude };
+        setUserLocation(coords);
+        setIsLocating(false);
+        setMapCenterState({ center: [latitude, longitude], zoom: 15 });
+      },
+      (error) => {
+        console.error("Error getting location", error);
+        let errorMsg = lang === 'tr' ? "Konumunuz alınamadı." : "Could not retrieve your location.";
+        if (error.code === error.PERMISSION_DENIED) {
+          errorMsg = lang === 'tr' 
+            ? "Konum izni reddedildi. Lütfen tarayıcı ayarlarınızdan izin verin." 
+            : "Location permission denied. Please allow it in browser settings.";
+        }
+        alert(errorMsg);
+        setActiveTab('otel');
+        setIsLocating(false);
+      },
+      { enableHighAccuracy: true, timeout: 10000, maximumAge: 0 }
+    );
   };
 
   const handleShareRoute = () => {
@@ -767,8 +928,11 @@ export default function App() {
       urlParams.set('tab', activeTab);
       if (activeTab === 'otel') {
         urlParams.set('hotel', selectedHotel?.isim || '');
-      } else {
+      } else if (activeTab === 'semt') {
         urlParams.set('district', selectedDistrict || '');
+      } else if (activeTab === 'konum' && userLocation) {
+        urlParams.set('lat', userLocation.lat.toString());
+        urlParams.set('lng', userLocation.lng.toString());
       }
       urlParams.set('days', duration.toString());
       urlParams.set('tempo', pace.toString());
@@ -845,7 +1009,7 @@ export default function App() {
     container.style.display = 'block';
     container.style.visibility = 'visible';
 
-    const startingPoint = activeTab === 'otel' ? selectedHotel.isim : selectedDistrict;
+    const startingPoint = activeTab === 'otel' ? selectedHotel.isim : activeTab === 'konum' ? (lang === 'tr' ? 'Mevcut Konumunuz' : 'Your Current Location') : selectedDistrict;
     const catLabels = preferences.map(pref => (TRANSLATIONS[lang].cats as any)[pref] || pref).join(', ');
 
     container.innerHTML = `
@@ -1060,8 +1224,8 @@ export default function App() {
                   </span>
                 </div>
                 
-                <div className="hidden lg:flex items-center gap-10 text-[13px] font-black uppercase tracking-widest text-slate-400">
-                  <button onClick={() => setShowHowItWorks(true)} className="hover:text-blue-600 transition-colors uppercase">{t.about}</button>
+                <div className="hidden lg:flex items-center gap-10 text-[13px] font-black uppercase tracking-widest text-slate-600 dark:text-slate-150">
+                  <button onClick={() => setShowHowItWorks(true)} className="hover:text-blue-600 dark:hover:text-blue-400 transition-colors uppercase">{t.about}</button>
                   <button 
                     onClick={() => {
                       clearRoute();
@@ -1071,10 +1235,10 @@ export default function App() {
                       const mapEl = document.getElementById('map-container');
                       if (mapEl) mapEl.scrollIntoView({ behavior: 'smooth' });
                     }} 
-                    className="hover:text-blue-600 transition-colors uppercase"
+                    className="hover:text-blue-600 dark:hover:text-blue-400 transition-colors uppercase"
                   >{t.goToMap}</button>
-                  <button onClick={() => setIsSidebarOpen(true)} className="text-blue-600 uppercase">{t.createRoute}</button>
-                  <button onClick={() => setShowHowItWorks(true)} className="hover:text-blue-600 transition-colors uppercase">{t.howItWorks}</button>
+                  <button onClick={() => setIsSidebarOpen(true)} className="text-blue-600 dark:text-blue-400 uppercase">{t.createRoute}</button>
+                  <button onClick={() => setShowHowItWorks(true)} className="hover:text-blue-600 dark:hover:text-blue-400 transition-colors uppercase">{t.howItWorks}</button>
                 </div>
 
                 <div className="flex items-center gap-4">
@@ -1103,18 +1267,23 @@ export default function App() {
               {!isExplorerMode && (
                 <aside className={cn(
                   "fixed inset-0 lg:relative lg:inset-auto w-full lg:w-[420px] border-r flex flex-col z-[1200] lg:z-40 transition-all duration-500 ease-out shadow-2xl lg:shadow-none",
-                  theme === 'dark' ? "bg-slate-900 border-slate-800" : "bg-white border-slate-100",
+                  theme === 'dark' ? "bg-slate-900 border-slate-800 text-white" : "bg-white border-slate-250 text-slate-900",
                   isSidebarOpen ? "translate-x-0" : "-translate-x-full lg:absolute"
                 )}>
                 {/* Sidebar Header */}
-                <div className="p-6 md:p-8 border-b border-slate-50 dark:border-slate-800 shrink-0">
+                <div className={cn("p-6 md:p-8 border-b shrink-0", theme === 'dark' ? "border-slate-800" : "border-slate-200")}>
                   <div className="flex items-center justify-between">
-                    <h2 className="text-[11px] md:text-[13px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-[0.2em]">
+                    <h2 className={cn("text-[11px] md:text-[13px] font-black uppercase tracking-[0.25em]", theme === 'dark' ? "text-white" : "text-slate-900")}>
                       {t.planner}
                     </h2>
                     <button 
                       onClick={() => setIsSidebarOpen(false)} 
-                      className="h-10 w-10 rounded-xl bg-slate-50 hover:bg-slate-100 dark:bg-slate-800 dark:hover:bg-slate-700/80 flex items-center justify-center text-slate-400 hover:text-red-500 active:scale-95 transition-all border border-slate-100 dark:border-slate-700"
+                      className={cn(
+                        "h-10 w-10 rounded-xl flex items-center justify-center active:scale-95 transition-all border",
+                        theme === 'dark' 
+                          ? "bg-slate-800 hover:bg-slate-700/80 text-slate-300 hover:text-red-400 border-slate-700" 
+                          : "bg-slate-100 hover:bg-slate-200 text-slate-700 hover:text-red-600 border-slate-250"
+                      )}
                     >
                       <X size={18} />
                     </button>
@@ -1127,63 +1296,82 @@ export default function App() {
                       {routeData.length > 0 ? (
                         <div className="h-full flex flex-col items-center justify-center gap-10 py-12">
                           <div className="relative">
-                            <div className="w-32 h-32 bg-blue-100 dark:bg-blue-900/20 rounded-full flex items-center justify-center animate-pulse">
-                              <i className="fas fa-check-circle text-6xl text-blue-600"></i>
+                            <div className={cn("w-32 h-32 rounded-full flex items-center justify-center animate-pulse", theme === 'dark' ? "bg-blue-900/20" : "bg-blue-50")}>
+                              <i className="fas fa-check-circle text-6xl text-blue-500"></i>
                             </div>
                             <motion.div 
                               animate={{ scale: [1, 1.2, 1] }} 
                               transition={{ repeat: Infinity, duration: 2 }}
-                              className="absolute -top-2 -right-2 w-10 h-10 bg-white dark:bg-slate-800 rounded-full shadow-xl flex items-center justify-center text-blue-600"
+                              className={cn("absolute -top-2 -right-2 w-10 h-10 rounded-full shadow-xl flex items-center justify-center text-blue-500 border", theme === 'dark' ? "bg-slate-800 border-slate-700" : "bg-white border-slate-100")}
                             >
                               <Sparkles size={20} />
                             </motion.div>
                           </div>
                           
                           <div className="text-center space-y-4">
-                          <h3 className="text-2xl font-black uppercase tracking-[0.2em] text-slate-900 dark:text-white">
+                          <h3 className={cn("text-2xl font-black uppercase tracking-[0.2em]", theme === 'dark' ? "text-white" : "text-slate-900")}>
                             {lang === 'tr' ? 'ROTANIZ HAZIR!' : 'ROUTE READY!'}
                           </h3>
-                            <p className="text-[11px] font-bold text-slate-400 uppercase tracking-widest leading-relaxed max-w-[280px] mx-auto">
+                            <p className={cn("text-[11px] font-bold uppercase tracking-widest leading-relaxed max-w-[280px] mx-auto", theme === 'dark' ? "text-slate-400" : "text-slate-600")}>
                               {lang === 'tr' ? 'Sizin için özel olarak hazırlanmış İstanbul macerasını keşfetmeye hazır mısınız?' : "Ready to discover the Istanbul adventure specially prepared for you?"}
                             </p>
                           </div>
-
-                          {/* <button 
-                            onClick={() => setIsViewingRoute(true)}
-                            className="w-full py-5 bg-blue-600 text-white rounded-[2rem] font-bold text-base uppercase tracking-[0.15em] shadow-[0_20px_50px_rgba(37,99,235,0.3)] hover:scale-105 active:scale-95 transition-all flex items-center justify-center gap-3"
-                          >
-                            <Calendar size={20} />
-                            {lang === 'tr' ? 'GÜNLÜK ROTA PLANINIZ' : 'YOUR DAILY ROUTE PLAN'}
-                          </button> */}
                         </div>
                       ) : (
                         <>
-                          <div className="flex bg-slate-100 dark:bg-slate-800 p-1.5 rounded-2xl mb-8 border border-slate-200 dark:border-slate-700">
+                          <div className={cn("flex p-1.5 rounded-2xl mb-8 border gap-1", theme === 'dark' ? "bg-slate-950 border-slate-800" : "bg-slate-100 border-slate-200")}>
                             <button 
                               onClick={() => {
-                                setActiveTab('otel');
-                                setRouteData([]);
-                                setIsViewingRoute(false);
+                                  setActiveTab('otel');
+                                  setRouteData([]);
+                                  setIsViewingRoute(false);
                               }}
-                              className={cn("flex-1 py-3.5 text-[13px] font-bold rounded-xl transition-all uppercase tracking-wider", activeTab === 'otel' ? "bg-white dark:bg-slate-700 shadow-xl text-blue-600" : "text-slate-500 hover:text-slate-700 dark:text-slate-400")}
+                              className={cn(
+                                "flex-1 py-3 px-1 text-[11px] sm:text-[12px] font-black rounded-xl transition-all uppercase tracking-wider", 
+                                activeTab === 'otel' 
+                                  ? "bg-blue-600 text-white shadow-xl" 
+                                  : (theme === 'dark' ? "text-slate-400 hover:text-white" : "text-slate-600 hover:text-slate-900")
+                              )}
                             >{t.hotelStart}</button>
                             <button 
                               onClick={() => {
-                                setActiveTab('semt');
-                                setRouteData([]);
-                                setIsViewingRoute(false);
+                                  setActiveTab('semt');
+                                  setRouteData([]);
+                                  setIsViewingRoute(false);
                               }}
-                              className={cn("flex-1 py-3.5 text-[13px] font-bold rounded-xl transition-all uppercase tracking-wider", activeTab === 'semt' ? "bg-white dark:bg-slate-700 shadow-xl text-blue-600" : "text-slate-500 hover:text-slate-700 dark:text-slate-400")}
+                              className={cn(
+                                "flex-1 py-3 px-1 text-[11px] sm:text-[12px] font-black rounded-xl transition-all uppercase tracking-wider", 
+                                activeTab === 'semt' 
+                                  ? "bg-blue-600 text-white shadow-xl" 
+                                  : (theme === 'dark' ? "text-slate-400 hover:text-white" : "text-slate-600 hover:text-slate-900")
+                              )}
                             >{t.districtStart}</button>
+                            <button 
+                              onClick={handleStartFromLocation}
+                              className={cn(
+                                "flex-1 py-3 px-1 text-[11px] sm:text-[12px] font-black rounded-xl transition-all uppercase tracking-wider flex items-center justify-center gap-1", 
+                                activeTab === 'konum' 
+                                  ? "bg-blue-600 text-white shadow-xl" 
+                                  : (theme === 'dark' ? "text-slate-400 hover:text-white" : "text-slate-600 hover:text-slate-900")
+                              )}
+                            >
+                              <MapPin size={12} className={cn(isLocating && "animate-spin")} />
+                              {isLocating ? (lang === 'tr' ? 'Konum...' : 'Locating...') : t.locationStart}
+                            </button>
                           </div>
 
                           {activeTab === 'otel' ? (
                             <div className="space-y-2">
-                      <label className="text-[12px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-widest flex items-center gap-2">
-                        <HotelIcon size={16} /> {t.hotelLabel}
-                      </label>
+                              <label className={cn("text-[12px] font-black uppercase tracking-widest flex items-center gap-2", theme === 'dark' ? "text-white" : "text-slate-900")}>
+                                <HotelIcon size={16} className="text-blue-500" /> {t.hotelLabel}
+                              </label>
                               <select 
-                                className="w-full p-4 bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-2xl text-sm font-bold outline-none transition-all appearance-none cursor-pointer text-slate-800 dark:text-slate-200"
+                                className={cn(
+                                  "w-full p-4 rounded-2xl text-sm font-black outline-none transition-all appearance-none cursor-pointer border", 
+                                  theme === 'dark' 
+                                    ? "bg-slate-950 border-slate-800 text-white" 
+                                    : "bg-slate-50 border-slate-300 text-slate-900"
+                                )}
                                 value={selectedHotel.isim}
                                 onChange={(e) => {
                                   const hotel = ISTANBUL_DATA.populer_oteller.find(h => h.isim === e.target.value);
@@ -1191,61 +1379,110 @@ export default function App() {
                                 }}
                               >
                                 {ISTANBUL_DATA.populer_oteller.map(h => (
-                                  <option key={h.isim} value={h.isim}>{lang === 'tr' ? h.isim : (h.isim_en || h.isim)}</option>
+                                  <option key={h.isim} value={h.isim} className={cn("font-bold", theme === 'dark' ? "bg-slate-950 text-white" : "bg-white text-slate-900")}>{lang === 'tr' ? h.isim : (h.isim_en || h.isim)}</option>
                                 ))}
                               </select>
                             </div>
-                          ) : (
+                          ) : activeTab === 'semt' ? (
                             <div className="space-y-2">
-                      <label className="text-[12px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-widest flex items-center gap-2">
-                        <MapPin size={16} /> {t.districtLabel}
-                      </label>
+                              <label className={cn("text-[12px] font-black uppercase tracking-widest flex items-center gap-2", theme === 'dark' ? "text-white" : "text-slate-900")}>
+                                <MapPin size={16} className="text-blue-500" /> {t.districtLabel}
+                              </label>
                               <select 
-                                className="w-full p-4 bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-2xl text-sm font-bold outline-none transition-all appearance-none cursor-pointer text-slate-800 dark:text-slate-200"
+                                className={cn(
+                                  "w-full p-4 rounded-2xl text-sm font-black outline-none transition-all appearance-none cursor-pointer border",
+                                  theme === 'dark' 
+                                    ? "bg-slate-950 border-slate-800 text-white" 
+                                    : "bg-slate-50 border-slate-300 text-slate-900"
+                                )}
                                 value={selectedDistrict}
                                 onChange={(e) => setSelectedDistrict(e.target.value)}
                               >
                                 {districts.map(d => (
-                                  <option key={d} value={d}>{(t as any).districts?.[d] || d}</option>
+                                  <option key={d} value={d} className={cn("font-bold", theme === 'dark' ? "bg-slate-950 text-white" : "bg-white text-slate-900")}>{(t as any).districts?.[d] || d}</option>
                                 ))}
                               </select>
+                            </div>
+                          ) : (
+                            <div className={cn("space-y-4 p-4 rounded-2xl border", theme === 'dark' ? "bg-slate-950 border-slate-800" : "bg-slate-100 border-slate-200")}>
+                              <div className="flex items-center gap-3">
+                                <MapPin size={24} className="text-blue-500 shrink-0" />
+                                <div>
+                                  <h4 className={cn("text-sm font-black", theme === 'dark' ? "text-white" : "text-slate-900")}>
+                                    {lang === 'tr' ? 'Canlı Konum Başlangıcı' : 'Live Location Start'}
+                                  </h4>
+                                  <p className={cn("text-[11px] font-bold", theme === 'dark' ? "text-slate-300" : "text-slate-600")}>
+                                    {lang === 'tr' ? 'Başlangıç noktasını cihaz konumunuz olarak atar.' : 'Sets coordinate-locked live position as start point.'}
+                                  </p>
+                                </div>
+                              </div>
+                              
+                              {isLocating ? (
+                                <div className="flex items-center gap-2 text-xs text-blue-400 font-bold p-1">
+                                  <div className="w-4 h-4 border-2 border-blue-400 border-t-transparent rounded-full animate-spin"></div>
+                                  <span>{lang === 'tr' ? 'Konum aranıyor...' : 'Locating...'}</span>
+                                </div>
+                              ) : userLocation ? (
+                                <div className="space-y-2">
+                                  <div className={cn("text-xs font-black flex items-center gap-1.5", theme === 'dark' ? "text-emerald-400" : "text-emerald-600")}>
+                                    <div className={cn("w-2 h-2 rounded-full bg-emerald-400 animate-ping", theme === 'dark' ? "bg-emerald-400" : "bg-emerald-500")} />
+                                    <span>{lang === 'tr' ? 'Konum Başarıyla Kilitlendi!' : 'Location Successfully Locked!'}</span>
+                                  </div>
+                                  <div className={cn("font-mono text-[12px] font-black p-2.5 border rounded-xl", theme === 'dark' ? "text-white bg-slate-900 border-slate-800" : "text-slate-950 bg-slate-50 border-slate-300")}>
+                                    {userLocation.lat.toFixed(5)}, {userLocation.lng.toFixed(5)}
+                                  </div>
+                                </div>
+                              ) : (
+                                <button
+                                  type="button"
+                                  onClick={handleStartFromLocation}
+                                  className="w-full py-2.5 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-xs font-black transition-colors flex items-center justify-center gap-2"
+                                >
+                                  <MapPin size={14} />
+                                  {lang === 'tr' ? 'CANLI KONUM AL' : 'GET LIVE LOCATION'}
+                                </button>
+                              )}
                             </div>
                           )}
 
                           <div className="space-y-4">
                             <div className="flex justify-between items-center">
-                              <label className="text-[13px] font-bold text-slate-600 dark:text-slate-400 uppercase tracking-widest">{t.duration}: <span className="text-blue-600 font-black">{duration} {t.days}</span></label>
+                              <label className={cn("text-[13px] font-black uppercase tracking-widest", theme === 'dark' ? "text-white" : "text-slate-900")}>
+                                {t.duration}: <span className={cn("font-black", theme === 'dark' ? "text-blue-400" : "text-blue-600")}>{duration} {t.days}</span>
+                              </label>
                             </div>
                             <input 
                               type="range" min="1" max="7" 
-                              className="w-full h-3 bg-slate-200 dark:bg-slate-800 rounded-lg appearance-none cursor-pointer accent-blue-600"
+                              className={cn("w-full h-3 rounded-lg appearance-none cursor-pointer accent-blue-600 border", theme === 'dark' ? "bg-slate-950 border-slate-800" : "bg-slate-200 border-slate-300")}
                               value={duration}
                               onChange={(e) => setDuration(parseInt(e.target.value))}
                             />
                           </div>
 
                           <div className="space-y-4">
-                            <label className="text-[13px] font-bold text-slate-600 dark:text-slate-400 uppercase tracking-widest flex items-center justify-between">
+                            <label className={cn("text-[13px] font-black uppercase tracking-widest flex items-center justify-between", theme === 'dark' ? "text-white" : "text-slate-900")}>
                               <div className="flex items-center gap-2">
                                 {t.dailyPace}
                                 <div className="group relative">
-                                  <Info size={14} className="text-slate-400 hover:text-blue-600 transition-colors cursor-help" />
-                                  <div className="hidden group-hover:block absolute left-0 bottom-full mb-2 w-48 p-3 bg-slate-900 text-white text-[10px] font-medium leading-relaxed rounded-xl shadow-2xl z-[100] animate-in fade-in zoom-in duration-200">
+                                  <Info size={14} className="text-slate-400 hover:text-blue-500 transition-colors cursor-help" />
+                                  <div className={cn("hidden group-hover:block absolute left-0 bottom-full mb-2 w-48 p-3 text-white text-[10px] font-medium leading-relaxed rounded-xl shadow-2xl z-[100] animate-in fade-in zoom-in duration-200 border", theme === 'dark' ? "bg-slate-950 border-slate-800" : "bg-slate-900 border-slate-950")}>
                                     {t.dailyPaceTooltip}
-                                    <div className="absolute top-full left-2 -mt-1 border-4 border-transparent border-t-slate-900" />
+                                    <div className={cn("absolute top-full left-2 -mt-1 border-4 border-transparent", theme === 'dark' ? "border-t-slate-950" : "border-t-slate-900")} />
                                   </div>
                                 </div>
                               </div>
-                              <span className="text-blue-600 font-black">{t.paceScale[pace - 3]} ({pace})</span>
+                              <span className={cn("font-black", theme === 'dark' ? "text-blue-400" : "text-blue-600")}>{t.paceScale[pace - 3]} ({pace})</span>
                             </label>
-                            <div className="flex bg-slate-100 dark:bg-slate-800 p-1.5 rounded-2xl border border-slate-200 dark:border-slate-700">
+                            <div className={cn("flex p-1.5 rounded-2xl border gap-1", theme === 'dark' ? "bg-slate-950 border-slate-800" : "bg-slate-100 border-slate-200")}>
                               {[3, 4, 5, 6].map(p => (
                                 <button
                                   key={p}
                                   onClick={() => setPace(p)}
                                   className={cn(
-                                    "flex-1 py-3 text-[14px] font-bold rounded-xl transition-all uppercase tracking-wider",
-                                    pace === p ? "bg-white dark:bg-slate-700 shadow-xl text-blue-600" : "text-slate-500 hover:text-slate-700 dark:text-slate-400"
+                                    "flex-1 py-3 text-[14px] font-black rounded-xl transition-all uppercase tracking-wider",
+                                    pace === p 
+                                      ? "bg-blue-600 text-white shadow-xl" 
+                                      : (theme === 'dark' ? "text-slate-400 hover:text-white" : "text-slate-600 hover:text-slate-900")
                                   )}
                                 >{p}</button>
                               ))}
@@ -1253,17 +1490,17 @@ export default function App() {
                           </div>
 
                           <div className="space-y-3">
-                            <label className="text-[13px] font-bold text-slate-600 dark:text-slate-400 uppercase tracking-widest flex items-center justify-between">
+                            <label className={cn("text-[13px] font-black uppercase tracking-widest flex items-center justify-between", theme === 'dark' ? "text-white" : "text-slate-900")}>
                               <div className="flex items-center gap-2 select-none cursor-pointer" onClick={() => setWeatherOptimizeEnabled(!weatherOptimizeEnabled)}>
                                 <span className="text-sm shrink-0">🌦️</span>
                                 <span>{lang === 'tr' ? 'HAVA DURUMU OPTİMİZASYONU' : 'WEATHER OPTIMIZATION'}</span>
                               </div>
-                              <span className={cn("font-black tracking-wider text-[11px]", weatherOptimizeEnabled ? "text-emerald-500" : "text-slate-400")}>
+                              <span className={cn("font-black tracking-wider text-[11px]", weatherOptimizeEnabled ? (theme === 'dark' ? "text-emerald-400" : "text-emerald-600") : "text-slate-400")}>
                                 {weatherOptimizeEnabled ? (lang === 'tr' ? 'AKTİF' : 'ACTIVE') : (lang === 'tr' ? 'KAPALI' : 'DISABLED')}
                               </span>
                             </label>
-                            <div className="p-4 bg-slate-100 dark:bg-slate-800/80 rounded-2xl border border-slate-200 dark:border-slate-700 flex justify-between items-center gap-4">
-                              <div className="text-[11px] text-slate-600 dark:text-slate-300 leading-relaxed font-semibold">
+                            <div className={cn("p-4 rounded-2xl border flex justify-between items-center gap-4", theme === 'dark' ? "bg-slate-950 border-slate-800" : "bg-slate-100 border-slate-200")}>
+                              <div className={cn("text-[11px] leading-relaxed font-bold", theme === 'dark' ? "text-slate-300" : "text-slate-600")}>
                                 {lang === 'tr'
                                   ? 'Aktif yağış tahminlerinde açık hava mekanlarını (parklar vb.) yağmurlu günlerden kapalı mekan etkinlikleriyle otomatik olarak yer değiştirir.'
                                   : 'Automatically switches outdoor locations with indoor alternatives on heavily forecasted rainy days.'}
@@ -1273,7 +1510,7 @@ export default function App() {
                                 onClick={() => setWeatherOptimizeEnabled(!weatherOptimizeEnabled)}
                                 className={cn(
                                   "relative inline-flex h-6 w-11 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none",
-                                  weatherOptimizeEnabled ? "bg-blue-600" : "bg-slate-300 dark:bg-slate-700"
+                                  weatherOptimizeEnabled ? "bg-blue-600" : (theme === 'dark' ? "bg-slate-800" : "bg-slate-300")
                                 )}
                               >
                                 <span
@@ -1287,17 +1524,22 @@ export default function App() {
                           </div>
 
                           <div className="space-y-4">
-                            <label className="text-[12px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-widest">{t.interests}</label>
+                            <label className={cn("text-[12px] font-black uppercase tracking-widest", theme === 'dark' ? "text-white" : "text-slate-900")}>
+                              {t.interests}
+                            </label>
                             <div className="grid grid-cols-2 gap-3">
                               {prefOptions.map(pref => (
                                 <button
                                   key={pref}
                                   onClick={() => togglePreference(pref)}
                                   className={cn(
-                                    "p-4 rounded-2xl border-2 text-[12px] font-bold uppercase tracking-wider transition-all text-center",
+                                    "p-4 rounded-2xl border-2 text-[12px] font-black uppercase tracking-wider transition-all text-center",
                                     preferences.includes(pref) 
-                                      ? "bg-blue-600 border-blue-600 text-white shadow-lg shadow-blue-200 dark:shadow-none" 
-                                      : "bg-white dark:bg-slate-800 border-slate-100 dark:border-slate-700 text-slate-500 dark:text-slate-400 hover:border-blue-100 dark:hover:border-blue-900"
+                                      ? "bg-blue-600 border-blue-600 text-white shadow-lg" 
+                                      : (theme === 'dark' 
+                                          ? "bg-slate-950 border-slate-800 text-slate-300 hover:border-blue-500 hover:text-white" 
+                                          : "bg-slate-50 border-slate-200 text-slate-700 hover:border-blue-600 hover:text-blue-600"
+                                        )
                                   )}
                                 >
                                   {(t.cats as any)[pref] || pref}
@@ -1311,7 +1553,10 @@ export default function App() {
                 </div>
 
                 {/* Fixed Action Area */}
-                <div className="p-6 border-t border-slate-100 dark:border-slate-800 bg-white/95 dark:bg-slate-900/95 backdrop-blur-xl z-20 shrink-0 shadow-[0_-15px_40px_rgba(0,0,0,0.05)]">
+                <div className={cn(
+                  "p-6 border-t backdrop-blur-xl z-20 shrink-0 shadow-[0_-15px_40px_rgba(0,0,0,0.15)]",
+                  theme === 'dark' ? "border-slate-800 bg-slate-900/95" : "border-slate-200 bg-white/95"
+                )}>
                   <div className="flex flex-col gap-3">
                     {routeData.length === 0 && (
                         <button 
@@ -1479,23 +1724,32 @@ export default function App() {
                       />
                     ))}
 
-                    {/* Start Point Marker (Hotel or District) */}
-                    {(routeData.length > 0 || (activeTab === 'otel' && selectedHotel) || (activeTab === 'semt' && selectedDistrict && DISTRICT_COORDS[selectedDistrict])) && (
+                    {/* Start Point Marker (Hotel or District or Current Location) */}
+                    {(routeData.length > 0 || 
+                      (activeTab === 'otel' && selectedHotel) || 
+                      (activeTab === 'semt' && selectedDistrict && DISTRICT_COORDS[selectedDistrict]) ||
+                      (activeTab === 'konum' && userLocation)) && (
                       <Marker 
-                        position={activeTab === 'otel' ? [selectedHotel.koordinat.enlem, selectedHotel.koordinat.boylam] : [DISTRICT_COORDS[selectedDistrict]?.lat || 41.0082, DISTRICT_COORDS[selectedDistrict]?.lng || 28.9784]}
+                        position={
+                          activeTab === 'otel' 
+                            ? [selectedHotel.koordinat.enlem, selectedHotel.koordinat.boylam] 
+                            : activeTab === 'konum' && userLocation
+                            ? [userLocation.lat, userLocation.lng]
+                            : [DISTRICT_COORDS[selectedDistrict]?.lat || 41.0082, DISTRICT_COORDS[selectedDistrict]?.lng || 28.9784]
+                        }
                         zIndexOffset={5000}
                         icon={L.divIcon({
                           className: 'completely-invisible-leaflet-wrapper',
                           html: `
                             <div class="user-location-marker-outer" style="background: transparent !important; background-color: transparent !important; border: none !important; box-shadow: none !important; display: flex; align-items: center; justify-content: center; width: 60px; height: 60px; outline: none !important;">
                               <div class="user-location-marker" style="position: relative; display: flex; flex-direction: column; align-items: center; justify-content: center; background: transparent !important; border: none !important; outline: none !important;">
-                                <div style="background-color: #3b82f6; color: white; width: 60px; height: 60px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 30px; border: 4px solid white; box-shadow: 0 8px 24px rgba(59,130,246,0.6); z-index: 2; transition: all 0.3s ease;">
-                                  <i class="fa-solid fa-hotel"></i>
+                                <div style="background-color: ${activeTab === 'otel' ? '#3b82f6' : activeTab === 'konum' ? '#10b981' : '#4f46e5'}; color: white; width: 60px; height: 60px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 30px; border: 4px solid white; box-shadow: 0 8px 24px ${activeTab === 'otel' ? 'rgba(59,130,246,0.6)' : activeTab === 'konum' ? 'rgba(16,185,129,0.6)' : 'rgba(79,70,229,0.6)'}; z-index: 2; transition: all 0.3s ease;">
+                                  <i class="fa-solid ${activeTab === 'otel' ? 'fa-hotel' : activeTab === 'konum' ? 'fa-location-crosshairs animate-pulse' : 'fa-map-pin'}"></i>
                                 </div>
-                                <div style="position: absolute; bottom: -28px; background: #3b82f6; color: white; padding: 4px 12px; border-radius: 12px; font-size: 9px; font-weight: 900; white-space: nowrap; box-shadow: 0 4px 12px rgba(0,0,0,0.2); border: 2px solid white; z-index: 3; text-transform: uppercase; letter-spacing: 0.1em;">
-                                  ${lang === 'tr' ? 'KONAKLAMA' : 'YOUR STAY'}
+                                <div style="position: absolute; bottom: -28px; background: ${activeTab === 'otel' ? '#3b82f6' : activeTab === 'konum' ? '#10b981' : '#4f46e5'}; color: white; padding: 4px 12px; border-radius: 12px; font-size: 9px; font-weight: 900; white-space: nowrap; box-shadow: 0 4px 12px rgba(0,0,0,0.2); border: 2px solid white; z-index: 3; text-transform: uppercase; letter-spacing: 0.1em;">
+                                  ${activeTab === 'otel' ? (lang === 'tr' ? 'KONAKLAMA' : 'YOUR STAY') : activeTab === 'konum' ? (lang === 'tr' ? 'MEVCUT KONUM' : 'CURRENT POSITION') : (lang === 'tr' ? 'BAŞLANGIÇ' : 'START POINT')}
                                 </div>
-                                <div style="position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); width: 80px; height: 80px; border-radius: 50%; background: #3b82f6; opacity: 0.3; z-index: 1;"></div>
+                                <div style="position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); width: 80px; height: 80px; border-radius: 50%; background: ${activeTab === 'otel' ? '#3b82f6' : activeTab === 'konum' ? '#10b981' : '#4f46e5'}; opacity: 0.3; z-index: 1;"></div>
                               </div>
                             </div>
                           `,
@@ -1551,6 +1805,7 @@ export default function App() {
                       );
                     })}
 
+                    <MapFlyer target={mapCenterState} />
                     <MapUpdater center={selectedVenue ? [selectedVenue.koordinat.enlem, selectedVenue.koordinat.boylam] : null} />
                     <RouteFitter routeData={visibleDay !== null ? routeData.filter(d => d.day === visibleDay) : routeData} />
                     <MapResizer 
@@ -1845,6 +2100,14 @@ export default function App() {
                               </>
                             )}
                           </button>
+
+                          <button 
+                            onClick={clearRoute}
+                            className="w-full py-2 bg-transparent hover:bg-red-50/50 dark:hover:bg-red-950/20 text-slate-500 hover:text-red-600 dark:text-slate-400 dark:hover:text-red-400 rounded-xl text-[10px] md:text-[11px] font-bold uppercase tracking-widest transition-all flex items-center justify-center gap-1.5 active:scale-95 cursor-pointer border border-transparent hover:border-red-150 dark:hover:border-red-950/40 mt-1"
+                          >
+                            <i className="fas fa-trash-alt text-[11px]"></i>
+                            {lang === 'tr' ? 'ROTAYI TEMİZLE' : 'CLEAR ROUTE'}
+                          </button>
                         </div>
                       </div>
                     </motion.aside>
@@ -1865,53 +2128,56 @@ export default function App() {
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
-            className="fixed inset-0 z-[4000] flex items-center justify-center p-4 sm:p-8 bg-slate-900/60 backdrop-blur-md"
+            className="fixed inset-0 z-[4000] flex items-center justify-center p-4 sm:p-6 bg-slate-900/60 backdrop-blur-md"
           >
             <motion.div 
               initial={{ scale: 0.95, y: 30 }}
               animate={{ scale: 1, y: 0 }}
               exit={{ scale: 0.95, y: 30 }}
-              className="bg-white dark:bg-slate-900 rounded-[2rem] sm:rounded-[4rem] shadow-[0_50px_100px_-20px_rgba(0,0,0,0.5)] max-w-2xl w-full p-6 sm:p-12 relative overflow-y-auto max-h-[90vh]"
+              className="bg-white dark:bg-slate-900 rounded-[2rem] sm:rounded-[3rem] shadow-[0_50px_100px_-20px_rgba(0,0,0,0.4)] max-w-xl w-full p-6 sm:p-8 relative overflow-hidden border border-slate-100 dark:border-slate-800"
             >
               <div className="absolute -top-24 -right-24 w-64 h-64 bg-blue-50 dark:bg-blue-900/20 rounded-full blur-3xl opacity-50" />
               <button 
                 onClick={() => setShowHowItWorks(false)}
-                className="absolute right-4 sm:right-10 top-4 sm:top-10 p-3 sm:p-4 bg-slate-50 dark:bg-slate-800 rounded-full text-slate-400 hover:text-blue-600 transition-all border border-slate-100 dark:border-slate-700"
+                className="absolute right-4 sm:right-6 top-4 sm:top-6 p-2.5 bg-slate-50 dark:bg-slate-800 rounded-full text-slate-400 hover:text-blue-600 dark:hover:text-blue-400 transition-all border border-slate-100 dark:border-slate-700 hover:scale-105 active:scale-95"
               >
-                <X size={20} />
+                <X size={18} />
               </button>
               
-              <div className="w-16 h-16 sm:w-24 sm:h-24 bg-blue-600 rounded-[1.5rem] sm:rounded-[2.5rem] flex items-center justify-center text-white mb-6 sm:mb-10 shadow-2xl shadow-blue-100 dark:shadow-none">
-                <Sparkles size={32} className="sm:hidden" />
-                <Sparkles size={48} className="hidden sm:block" />
+              <div className="w-12 h-12 bg-blue-600 rounded-2xl flex items-center justify-center text-white mb-4 shadow-xl shadow-blue-500/20">
+                <Sparkles size={24} />
               </div>
               
-              <h2 className="text-2xl sm:text-4xl font-black text-slate-900 dark:text-white mb-4 sm:mb-6 uppercase tracking-tighter">{t.howItWorksTitle}</h2>
-              <p className="text-sm sm:text-lg text-slate-500 dark:text-slate-400 leading-relaxed mb-6 sm:mb-10 font-medium">
+              <h2 className="text-xl sm:text-2xl font-black text-slate-900 dark:text-white mb-2 uppercase tracking-tighter">{t.howItWorksTitle}</h2>
+              <p className="text-xs sm:text-sm text-slate-500 dark:text-slate-400 leading-relaxed mb-4 font-semibold">
                 {t.howItWorksDesc}
               </p>
 
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6 sm:mb-10">
-                <div className="p-6 bg-slate-50 dark:bg-slate-800 rounded-[2rem] border border-slate-100 dark:border-slate-700">
-                  <div className="w-12 h-12 bg-white dark:bg-slate-700 rounded-2xl flex items-center justify-center text-blue-600 shadow-sm mb-4"><Navigation size={24} /></div>
-                  <h4 className="font-black text-slate-800 dark:text-slate-100 text-xs uppercase tracking-widest mb-1">{t.optimization}</h4>
-                  <p className="text-[10px] text-slate-400 font-bold">{t.optimizationDesc}</p>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mb-4">
+                <div className="p-3.5 bg-slate-50 dark:bg-slate-800/60 rounded-2xl border border-slate-100 dark:border-slate-800 flex gap-3">
+                  <div className="w-9 h-9 shrink-0 bg-white dark:bg-slate-700 rounded-xl flex items-center justify-center text-blue-600 shadow-sm"><Navigation size={18} /></div>
+                  <div>
+                    <h4 className="font-black text-slate-800 dark:text-slate-100 text-[10px] sm:text-[11px] uppercase tracking-wider mb-0.5">{t.optimization}</h4>
+                    <p className="text-[10px] leading-snug text-slate-400 font-bold">{t.optimizationDesc}</p>
+                  </div>
                 </div>
-                <div className="p-6 bg-slate-50 dark:bg-slate-800 rounded-[2rem] border border-slate-100 dark:border-slate-700">
-                  <div className="w-12 h-12 bg-white dark:bg-slate-700 rounded-2xl flex items-center justify-center text-blue-600 shadow-sm mb-4"><CheckCircle2 size={24} /></div>
-                  <h4 className="font-black text-slate-800 dark:text-slate-100 text-xs uppercase tracking-widest mb-1">{t.typeFiltering}</h4>
-                  <p className="text-[10px] text-slate-400 font-bold">{t.typeFilteringDesc}</p>
+                <div className="p-3.5 bg-slate-50 dark:bg-slate-800/60 rounded-2xl border border-slate-100 dark:border-slate-800 flex gap-3">
+                  <div className="w-9 h-9 shrink-0 bg-white dark:bg-slate-700 rounded-xl flex items-center justify-center text-blue-600 shadow-sm"><CheckCircle2 size={18} /></div>
+                  <div>
+                    <h4 className="font-black text-slate-800 dark:text-slate-100 text-[10px] sm:text-[11px] uppercase tracking-wider mb-0.5">{t.typeFiltering}</h4>
+                    <p className="text-[10px] leading-snug text-slate-400 font-bold">{t.typeFilteringDesc}</p>
+                  </div>
                 </div>
               </div>
 
-              <div className="mb-10">
-                <h3 className="text-xl font-black text-slate-900 dark:text-white mb-4 uppercase tracking-tight">{t.aboutTitle}</h3>
-                <p className="text-sm text-slate-400 dark:text-slate-400 leading-relaxed">{t.aboutDesc}</p>
+              <div className="mb-5 sm:mb-6">
+                <h3 className="text-[10px] font-black text-slate-400 dark:text-slate-500 mb-1 uppercase tracking-[0.20em]">{t.aboutTitle}</h3>
+                <p className="text-xs text-slate-500 dark:text-slate-400 leading-relaxed font-semibold">{t.aboutDesc}</p>
               </div>
               
               <button 
                 onClick={() => setShowHowItWorks(false)}
-                className="w-full bg-slate-900 dark:bg-blue-600 text-white py-6 rounded-[2rem] font-black text-lg uppercase tracking-widest hover:bg-blue-600 dark:hover:bg-blue-700 transition-all shadow-2xl shadow-slate-200 dark:shadow-none"
+                className="w-full bg-slate-900 dark:bg-blue-600 text-white py-3.5 sm:py-4 rounded-2xl font-black text-xs uppercase tracking-widest hover:bg-blue-600 dark:hover:bg-blue-700 hover:scale-[1.02] active:scale-[0.98] transition-all shadow-lg"
               >
                 {t.ready}
               </button>
@@ -2142,62 +2408,75 @@ export default function App() {
             </div>
 
             {/* Simulated narration progress meter */}
-            <div className="space-y-3">
-              <div className="flex items-center justify-between text-[9px] font-mono text-slate-500">
-                <span>00:{(Math.floor(audioProgress * 0.3)).toString().padStart(2, '0')}</span>
-                <span>00:30</span>
-              </div>
-              
-              <div className="h-1.5 w-full bg-slate-800 rounded-full overflow-hidden relative cursor-pointer" onClick={(e) => {
-                const rect = e.currentTarget.getBoundingClientRect();
-                const clickX = e.clientX - rect.left;
-                const percentage = Math.round((clickX / rect.width) * 100);
-                setAudioProgress(percentage);
-              }}>
-                <div 
-                  className="h-full bg-gradient-to-r from-emerald-400 to-teal-500 rounded-full transition-all duration-300"
-                  style={{ width: `${audioProgress}%` }}
-                />
-              </div>
+            {(() => {
+              const estimatedTotalSeconds = Math.max(5, Math.ceil(getVenueNarration(activeAudioVenue).split(/\s+/).filter(Boolean).length / 2.2));
+              const elapsedSeconds = Math.round((audioProgress / 100) * estimatedTotalSeconds);
+              const formatAudioTime = (secs: number) => {
+                const m = Math.floor(secs / 60);
+                const s = secs % 60;
+                return `${m.toString().padStart(2, '0')}:${s.toString().padStart(2, '0')}`;
+              };
 
-              {/* Media Controls */}
-              <div className="flex items-center justify-between pt-1">
-                <div className="flex items-center gap-1">
-                  {[1, 2, 3, 4, 5].map((bar) => (
-                    <motion.div 
-                      key={bar}
-                      animate={isAudioPlaying ? { height: [4, 16, 4] } : { height: 4 }}
-                      transition={{ repeat: Infinity, duration: 0.6, delay: bar * 0.1 }}
-                      className="w-1 bg-emerald-400 rounded-full"
-                      style={{ height: 4 }}
+              return (
+                <div className="space-y-3">
+                  <div className="flex items-center justify-between text-[9px] font-mono text-slate-500">
+                    <span>{formatAudioTime(elapsedSeconds)}</span>
+                    <span>{formatAudioTime(estimatedTotalSeconds)}</span>
+                  </div>
+                  
+                  <div className="h-1.5 w-full bg-slate-800 rounded-full overflow-hidden relative cursor-pointer" onClick={(e) => {
+                    const rect = e.currentTarget.getBoundingClientRect();
+                    const clickX = e.clientX - rect.left;
+                    const percentage = Math.round((clickX / rect.width) * 100);
+                    handleSeek(percentage);
+                  }}>
+                    <div 
+                      className="h-full bg-gradient-to-r from-emerald-400 to-teal-500 rounded-full transition-all duration-300"
+                      style={{ width: `${audioProgress}%` }}
                     />
-                  ))}
-                </div>
+                  </div>
 
-                <div className="flex items-center gap-3">
-                  <button 
-                    onClick={() => {
-                      setAudioProgress(0);
-                      setIsAudioPlaying(true);
-                    }}
-                    className="w-8 h-8 rounded-full bg-slate-800 text-slate-300 hover:text-white flex items-center justify-center text-xs active:scale-95 transition-transform"
-                    title={lang === 'tr' ? 'Baştan Al' : 'Restart'}
-                  >
-                    <i className="fa-solid fa-backward-step"></i>
-                  </button>
-                  <button 
-                    onClick={() => setIsAudioPlaying(!isAudioPlaying)}
-                    className="w-11 h-11 rounded-full bg-emerald-500 text-slate-950 hover:bg-emerald-400 flex items-center justify-center text-sm shadow-xl hover:scale-105 active:scale-95 transition-all"
-                  >
-                    {isAudioPlaying ? <i className="fa-solid fa-pause"></i> : <i className="fa-solid fa-play ml-0.5"></i>}
-                  </button>
-                </div>
+                  {/* Media Controls */}
+                  <div className="flex items-center justify-between pt-1">
+                    <div className="flex items-center gap-1">
+                      {[1, 2, 3, 4, 5].map((bar) => (
+                        <motion.div 
+                          key={bar}
+                          animate={isAudioPlaying ? { height: [4, 16, 4] } : { height: 4 }}
+                          transition={{ repeat: Infinity, duration: 0.6, delay: bar * 0.1 }}
+                          className="w-1 bg-emerald-400 rounded-full"
+                          style={{ height: 4 }}
+                        />
+                      ))}
+                    </div>
 
-                <div className="text-[10px] text-slate-500 font-mono">
-                  {isAudioPlaying ? (lang === 'tr' ? 'OYNATILIYOR' : 'PLAYING') : (lang === 'tr' ? 'DURDURULDU' : 'PAUSED')}
+                    <div className="flex items-center gap-3">
+                      <button 
+                        onClick={() => {
+                          setSpeechOffsetCharIndex(0);
+                          setAudioProgress(0);
+                          setIsAudioPlaying(true);
+                        }}
+                        className="w-8 h-8 rounded-full bg-slate-800 text-slate-300 hover:text-white flex items-center justify-center text-xs active:scale-95 transition-transform"
+                        title={lang === 'tr' ? 'Baştan Al' : 'Restart'}
+                      >
+                        <i className="fa-solid fa-backward-step"></i>
+                      </button>
+                      <button 
+                        onClick={() => setIsAudioPlaying(!isAudioPlaying)}
+                        className="w-11 h-11 rounded-full bg-emerald-500 text-slate-950 hover:bg-emerald-400 flex items-center justify-center text-sm shadow-xl hover:scale-105 active:scale-95 transition-all"
+                      >
+                        {isAudioPlaying ? <i className="fa-solid fa-pause"></i> : <i className="fa-solid fa-play ml-0.5"></i>}
+                      </button>
+                    </div>
+
+                    <div className="text-[10px] text-slate-500 font-mono">
+                      {isAudioPlaying ? (lang === 'tr' ? 'OYNATILIYOR' : 'PLAYING') : (lang === 'tr' ? 'DURDURULDU' : 'PAUSED')}
+                    </div>
+                  </div>
                 </div>
-              </div>
-            </div>
+              );
+            })()}
           </motion.div>
         )}
       </AnimatePresence>
