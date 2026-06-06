@@ -2018,7 +2018,12 @@ export default function App() {
                       initial={{ x: "100%" }}
                       animate={{ x: isRightSidebarOpen ? "0%" : "100%" }}
                       transition={{ type: "tween", ease: "easeInOut", duration: 0.35 }}
-                      className="fixed lg:absolute top-0 right-0 h-full w-full sm:w-[420px] bg-white/95 dark:bg-slate-900/95 backdrop-blur-xl border-l border-slate-100 dark:border-slate-800 z-[1200] shadow-2xl flex"
+                      className={cn(
+                        "fixed lg:absolute top-0 right-0 h-full w-full sm:w-[420px] border-l z-[1200] shadow-2xl flex transition-colors duration-500",
+                        theme === 'dark' 
+                          ? "bg-slate-900 border-slate-800 text-white" 
+                          : "bg-white border-slate-200 text-slate-900"
+                      )}
                     >
                       {/* Toggle Handle */}
                       <button 
@@ -2054,16 +2059,21 @@ export default function App() {
                       </button>
 
                       <div className="flex-1 flex flex-col w-full max-w-full overflow-hidden">
-                        <div className="p-6 md:p-8 border-b border-slate-100 dark:border-slate-800 shrink-0">
-                          <div className="flex items-center justify-between mb-6">
-                            <h2 className="text-[11px] md:text-[13px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-[0.2em]">
+                        <div className={cn("p-6 md:p-8 border-b shrink-0", theme === 'dark' ? "border-slate-800" : "border-slate-200")}>
+                          <div className="flex items-center justify-between">
+                            <h2 className={cn("text-[11px] md:text-[13px] font-black uppercase tracking-[0.25em]", theme === 'dark' ? "text-white" : "text-slate-900")}>
                               {lang === 'tr' ? 'GÜNLÜK ROTA PLANI' : 'DAILY ROUTE PLAN'}
                             </h2>
                             <button 
                               onClick={() => setIsRightSidebarOpen(false)} 
-                              className="h-10 w-10 rounded-xl bg-slate-50 hover:bg-slate-100 dark:bg-slate-800 dark:hover:bg-slate-700/80 flex items-center justify-center text-slate-400 hover:text-red-500 active:scale-95 transition-all border border-slate-100 dark:border-slate-700"
+                              className={cn(
+                                "h-10 w-10 rounded-xl flex items-center justify-center active:scale-95 transition-all border shadow-[0_0_12px_rgba(255,255,255,0.35)]",
+                                theme === 'dark' 
+                                  ? "bg-slate-800 hover:bg-slate-700/80 text-white hover:text-red-400 border-slate-700" 
+                                  : "bg-slate-900 text-white hover:bg-slate-800 border-slate-950"
+                              )}
                             >
-                              <X size={18} />
+                              <X size={18} strokeWidth={3} className="text-white" />
                             </button>
                           </div>
 
@@ -2085,12 +2095,14 @@ export default function App() {
                           )}
 
                           {/* Day Filter Bubbles */}
-                          <div className="flex flex-wrap gap-2">
+                          <div className={cn("flex flex-wrap p-1.5 rounded-2xl border gap-1.5", theme === 'dark' ? "bg-slate-950/40 border-slate-800" : "bg-slate-50 border-slate-200/60")}>
                             <button 
                               onClick={() => setVisibleDay(null)}
                               className={cn(
-                                "px-4 py-2 rounded-full text-[10px] font-black uppercase tracking-widest transition-all",
-                                visibleDay === null ? "bg-blue-600 text-white shadow-lg" : "bg-slate-100 dark:bg-slate-800 text-slate-400 hover:text-blue-600"
+                                "px-4 py-2 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all",
+                                visibleDay === null 
+                                  ? "bg-blue-600 text-white shadow-lg shadow-blue-500/10" 
+                                  : (theme === 'dark' ? "text-slate-400 hover:text-white" : "text-slate-600 hover:text-slate-900")
                               )}
                             >
                               {lang === 'tr' ? 'TÜMÜ' : 'ALL'}
@@ -2103,8 +2115,10 @@ export default function App() {
                                   key={day.day}
                                   onClick={() => setVisibleDay(day.day)}
                                   className={cn(
-                                    "px-4 py-2 rounded-full text-[10px] font-black uppercase tracking-widest transition-all gap-1.5 flex items-center justify-center",
-                                    visibleDay === day.day ? "bg-blue-600 text-white shadow-lg" : "bg-slate-100 dark:bg-slate-800 text-slate-400 hover:text-blue-600"
+                                    "px-4 py-2 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all gap-1.5 flex items-center justify-center",
+                                    visibleDay === day.day 
+                                      ? "bg-blue-600 text-white shadow-lg shadow-blue-500/10" 
+                                      : (theme === 'dark' ? "text-slate-400 hover:text-white" : "text-slate-600 hover:text-slate-900")
                                   )}
                                   title={weatherObj ? `${getWeatherDesc(weatherObj.condition)} • ${weatherObj.temp}°C` : ''}
                                 >
@@ -2118,8 +2132,8 @@ export default function App() {
 
                         <div className="flex-1 overflow-y-auto custom-scrollbar p-6 md:p-8 pb-32 space-y-8 md:space-y-10">
                           {routeData.filter(d => visibleDay === null || d.day === visibleDay).map((day, idx) => (
-                            <div key={day.day} className="space-y-4 relative pl-6 border-l-2 border-slate-100 dark:border-slate-800">
-                              <div className="absolute -left-[5px] top-0 w-2 h-2 bg-slate-200 dark:bg-slate-700 rounded-full" />
+                            <div key={day.day} className={cn("space-y-4 relative pl-6 border-l-2", theme === 'dark' ? "border-slate-800" : "border-slate-150")}>
+                              <div className={cn("absolute -left-[5px] top-0 w-2 h-2 rounded-full", theme === 'dark' ? "bg-slate-700" : "bg-slate-300")} />
                               <div className="flex items-center gap-2 flex-wrap">
                                 <span className="text-[10px] font-black text-blue-600 tracking-widest uppercase bg-blue-50 dark:bg-blue-900/30 px-3 py-1 rounded-full">
                                   {t.day} {day.day}
@@ -2128,7 +2142,7 @@ export default function App() {
                                   const weatherObj = dailyWeather.find(w => w.day === day.day);
                                   if (weatherObj) {
                                     return (
-                                      <span className="text-[9px] font-extrabold text-slate-500 bg-slate-50 border border-slate-100 dark:bg-slate-800/85 dark:border-slate-700/80 dark:text-slate-400 px-2.5 py-1 rounded-full flex items-center gap-1.5 shrink-0 shadow-sm">
+                                      <span className={cn("text-[9px] font-extrabold border px-2.5 py-1 rounded-full flex items-center gap-1.5 shrink-0 shadow-sm", theme === 'dark' ? "bg-slate-800/85 border-slate-700/80 text-slate-400" : "bg-slate-50 border-slate-200/80 text-slate-500")}>
                                         <span>{getWeatherEmoji(weatherObj.condition)}</span>
                                         <span>{getWeatherDesc(weatherObj.condition)}</span>
                                         <span>•</span>
@@ -2145,16 +2159,27 @@ export default function App() {
                                     key={vIdx} 
                                     initial={{ x: 20, opacity: 0 }}
                                     animate={{ x: 0, opacity: 1 }}
-                                    className="group p-4 bg-white dark:bg-slate-800 border border-slate-100 dark:border-slate-700 rounded-3xl hover:border-blue-200 shadow-sm hover:shadow-2xl hover:shadow-blue-50 dark:hover:shadow-blue-900/20 transition-all cursor-pointer"
+                                    className={cn(
+                                      "group p-4 border rounded-3xl transition-all cursor-pointer shadow-sm relative overflow-hidden",
+                                      theme === 'dark' 
+                                        ? "bg-slate-800 border-slate-700/80 text-white hover:border-blue-500 hover:shadow-2xl hover:shadow-blue-900/10" 
+                                        : "bg-slate-50/75 border-slate-200/80 text-slate-900 hover:border-blue-500 hover:bg-white hover:shadow-2xl hover:shadow-blue-50"
+                                    )}
                                     onClick={() => setSelectedVenue(v)}
                                   >
                                     <div className="flex items-center justify-between gap-4 w-full">
                                       <div className="flex items-center gap-3 overflow-hidden">
-                                        <div className="w-fit h-8 px-3 bg-slate-900 dark:bg-slate-600 text-white text-[10px] font-black rounded-xl flex items-center justify-center group-hover:bg-blue-600 transition-colors uppercase whitespace-nowrap">
+                                        <div className={cn(
+                                          "w-fit h-8 px-3 text-[10px] font-black rounded-xl flex items-center justify-center transition-colors uppercase whitespace-nowrap",
+                                          theme === 'dark' ? "bg-slate-755 text-slate-300 group-hover:bg-blue-600 group-hover:text-white" : "bg-slate-200 text-slate-700 group-hover:bg-blue-600 group-hover:text-white"
+                                        )}>
                                           {day.day}. {t.day} - {vIdx + 1}
                                         </div>
                                         <div className="overflow-hidden">
-                                          <div className="text-xs font-black text-slate-800 dark:text-slate-200 truncate group-hover:text-blue-600 transition-colors uppercase tracking-tight">
+                                          <div className={cn(
+                                            "text-xs font-black truncate transition-colors uppercase tracking-tight",
+                                            theme === 'dark' ? "text-slate-100 group-hover:text-blue-400" : "text-slate-800 group-hover:text-blue-600"
+                                          )}>
                                             {lang === 'tr' ? v.isim : (v.isim_en || v.isim)}
                                           </div>
                                           <div className="text-[10px] text-slate-400 font-bold uppercase tracking-widest mt-0.5">
@@ -2170,7 +2195,10 @@ export default function App() {
                                           setIsAudioPlaying(true);
                                           setAudioProgress(0);
                                         }}
-                                        className="shrink-0 w-8 h-8 rounded-full bg-slate-100 hover:bg-emerald-100 text-slate-500 hover:text-emerald-600 dark:bg-slate-700 dark:hover:bg-slate-800 flex items-center justify-center transition-colors shadow-sm"
+                                        className={cn(
+                                          "shrink-0 w-8 h-8 rounded-full flex items-center justify-center transition-colors shadow-sm",
+                                          theme === 'dark' ? "bg-slate-700 text-slate-300 hover:bg-emerald-950/60 hover:text-emerald-400" : "bg-slate-100 text-slate-500 hover:bg-emerald-50 hover:text-emerald-600 border border-slate-200/60"
+                                        )}
                                         title={t.audioGuide || "Sesli Rehber"}
                                       >
                                         <i className="fa-solid fa-volume-high text-[10px]" />
@@ -2184,10 +2212,10 @@ export default function App() {
                         </div>
 
                         {/* Download & Share Actions */}
-                        <div className="p-4 md:p-6 border-t border-slate-100 dark:border-slate-800 bg-white dark:bg-slate-900 shrink-0 flex flex-col gap-2">
+                        <div className={cn("p-4 md:p-6 border-t shrink-0 flex flex-col gap-2 transition-colors", theme === 'dark' ? "border-slate-800 bg-slate-900" : "border-slate-200 bg-white")}>
                           <button 
                             onClick={handleShareRoute}
-                            className="w-full h-11 bg-blue-600 text-white rounded-2xl font-black text-[10px] md:text-sm uppercase tracking-widest hover:bg-blue-700 transition-all flex items-center justify-center gap-2 shadow-lg shadow-blue-500/20 active:scale-95 cursor-pointer"
+                            className="w-full h-11 bg-blue-600 text-white rounded-2xl font-black text-[10px] md:text-sm uppercase tracking-widest hover:bg-blue-700 transition-all flex items-center justify-center gap-2 shadow-lg shadow-blue-500/15 active:scale-95 cursor-pointer"
                           >
                             <Share size={15} />
                             {lang === 'tr' ? 'ROTAYI PAYLAŞ' : 'SHARE ROUTE'}
@@ -2196,7 +2224,12 @@ export default function App() {
                           <button 
                             onClick={handleDownloadPDF}
                             disabled={isDownloadingPDF}
-                            className="w-full h-11 bg-slate-50 hover:bg-slate-100 dark:bg-slate-800 dark:hover:bg-slate-700/80 text-slate-700 dark:text-slate-300 rounded-2xl font-black text-[10px] md:text-sm uppercase tracking-widest transition-all flex items-center justify-center gap-2 active:scale-95 border border-slate-100 dark:border-slate-700 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
+                            className={cn(
+                              "w-full h-11 rounded-2xl font-black text-[10px] md:text-sm uppercase tracking-widest transition-all flex items-center justify-center gap-2 active:scale-95 border cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed",
+                              theme === 'dark'
+                                ? "bg-slate-800 hover:bg-slate-700/80 text-white border-slate-700"
+                                : "bg-slate-100 hover:bg-slate-200 text-slate-700 border-slate-200"
+                            )}
                           >
                             {isDownloadingPDF ? (
                               <>
@@ -2213,7 +2246,12 @@ export default function App() {
 
                           <button 
                             onClick={clearRoute}
-                            className="w-full py-2 bg-transparent hover:bg-red-50/50 dark:hover:bg-red-950/20 text-slate-500 hover:text-red-600 dark:text-slate-400 dark:hover:text-red-400 rounded-xl text-[10px] md:text-[11px] font-bold uppercase tracking-widest transition-all flex items-center justify-center gap-1.5 active:scale-95 cursor-pointer border border-transparent hover:border-red-150 dark:hover:border-red-950/40 mt-1"
+                            className={cn(
+                              "w-full py-2 bg-transparent rounded-xl text-[10px] md:text-[11px] font-bold uppercase tracking-widest transition-all flex items-center justify-center gap-1.5 active:scale-95 cursor-pointer border border-transparent mt-1",
+                              theme === 'dark'
+                                ? "text-slate-400 hover:text-red-400 hover:bg-red-950/20"
+                                : "text-slate-500 hover:text-red-600 hover:bg-red-50"
+                            )}
                           >
                             <i className="fas fa-trash-alt text-[11px]"></i>
                             {lang === 'tr' ? 'ROTAYI TEMİZLE' : 'CLEAR ROUTE'}

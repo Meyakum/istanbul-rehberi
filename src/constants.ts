@@ -81,7 +81,7 @@ export const TRANSLATIONS = {
     howItWorksDesc: "Otelini veya gezmek istediğin semti seç, gün sayısını belirle; yapay zekamız senin için en kısa ulaşım süreli ve en mantıklı gezi rotasını anında hazırlasın!",
     optimization: "Mesafe Optimizasyonu", optimizationDesc: "En yakın noktalar algoritma ile sıralanır.",
     typeFiltering: "Tür Bazlı Filtreleme", typeFilteringDesc: "Sadece ilgi duyduğunuz kategoriler dâhil edilir.",
-    aboutDesc: "İstanbul Akıllı Rehber, dünyanın en güzel şehirlerinden biri olan İstanbul'u en verimli şekilde gezebilmeniz için geliştirilmiş yapay zeka destekli bir rotalama platformudur.",
+    aboutDesc: "Bu proje, İstanbul'un tarihi, kültürel ve doğal zenginliklerini yerli ve yabancı turistlere en doğru şekilde aktarmak için geliştirilmiştir. Kültür ve Turizm Bakanlığı veri standartları referans alınarak hazırlanan akıllı algoritması, kullanıcılara sesli rehberlik desteği, kategori filtreleme ve gün bazlı optimizasyon sunarak benzersiz bir şehir deneyimi sağlar.",
     cats: {
       worship: "İbadet & İnanç",
       history: "Tarih & Müze",
@@ -118,7 +118,7 @@ export const TRANSLATIONS = {
     howItWorksDesc: "Choose your hotel or the district you want to visit, set the number of days; our AI will instantly prepare the most logical travel route with the shortest transportation time for you!",
     optimization: "Distance Optimization", optimizationDesc: "Nearest points are ordered by algorithm.",
     typeFiltering: "Type-Based Filtering", typeFilteringDesc: "Only categories you are interested in are included.",
-    aboutDesc: "Istanbul Smart Guide is an AI-powered routing platform developed to help you visit Istanbul, one of the most beautiful cities in the world, in the most efficient way.",
+    aboutDesc: "This project has been developed to present Istanbul's historical, cultural, and natural riches to local and foreign tourists in the most accurate way. Built upon the data standards of the Ministry of Culture and Tourism, our smart routing algorithm offers audio guides, category filtering, and day-by-day optimization to ensure an unparalleled city exploration experience.",
     cats: {
       worship: "Worship & Faith",
       history: "History & Museum",
