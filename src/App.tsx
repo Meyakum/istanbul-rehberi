@@ -996,17 +996,27 @@ export default function App() {
     }
 
     // Create custom offscreen container for PDF generation (ensuring physical layout calculations work correctly)
+    const wrapper = document.createElement('div');
+    wrapper.id = 'pdf-print-wrapper';
+    wrapper.style.position = 'fixed';
+    wrapper.style.top = '0';
+    wrapper.style.left = '0';
+    wrapper.style.width = '0';
+    wrapper.style.height = '0';
+    wrapper.style.overflow = 'hidden';
+    wrapper.style.zIndex = '-9999';
+    wrapper.style.opacity = '0.01';
+    wrapper.style.pointerEvents = 'none';
+
     const container = document.createElement('div');
     container.id = 'pdf-print-container';
-    container.style.position = 'absolute';
-    container.style.left = '-9999px';
-    container.style.top = '-9999px';
     container.style.width = '790px'; // Standard printed single-page width
     container.style.padding = '40px';
     container.style.backgroundColor = '#ffffff';
     container.style.color = '#1e293b';
     container.style.fontFamily = 'Inter, system-ui, sans-serif';
     container.style.display = 'block';
+    container.style.position = 'relative';
     container.style.visibility = 'visible';
 
     const startingPoint = activeTab === 'otel' ? selectedHotel.isim : activeTab === 'konum' ? (lang === 'tr' ? 'Mevcut Konumunuz' : 'Your Current Location') : selectedDistrict;
@@ -1104,7 +1114,8 @@ export default function App() {
       </div>
     `;
 
-    document.body.appendChild(container);
+    wrapper.appendChild(container);
+    document.body.appendChild(wrapper);
 
     // Wait for the browser to parse HTML and completely load/decode any static/dynamic imagery including map snapshot
     const images = Array.from(container.querySelectorAll('img'));
@@ -1135,11 +1146,17 @@ export default function App() {
         scrollY: 0,
         onclone: (clonedDoc: any) => {
           // Inside the cloned rendering context, ensure container positions beautifully
+          const targetWrapper = clonedDoc.getElementById('pdf-print-wrapper');
           const target = clonedDoc.getElementById('pdf-print-container');
+          if (targetWrapper) {
+            targetWrapper.style.width = 'auto';
+            targetWrapper.style.height = 'auto';
+            targetWrapper.style.overflow = 'visible';
+            targetWrapper.style.opacity = '1';
+          }
           if (target) {
             target.style.position = 'relative';
-            target.style.left = '0';
-            target.style.top = '0';
+            target.style.display = 'block';
           }
         }
       },
@@ -1148,17 +1165,17 @@ export default function App() {
 
     if (html2pdfLib) {
       html2pdfLib().from(container).set(opt).save().then(() => {
-        document.body.removeChild(container);
+        try { document.body.removeChild(wrapper); } catch (_) {}
         setIsDownloadingPDF(false);
         showToast(lang === 'tr' ? 'PDF başarıyla indirildi!' : 'PDF downloaded successfully!');
       }).catch((e: any) => {
         console.error("PDF generation err:", e);
-        try { document.body.removeChild(container); } catch (_) {}
+        try { document.body.removeChild(wrapper); } catch (_) {}
         setIsDownloadingPDF(false);
         showToast(lang === 'tr' ? 'Yükleme sırasında hata oluştu.' : 'Error generating PDF.');
       });
     } else {
-      try { document.body.removeChild(container); } catch (_) {}
+      try { document.body.removeChild(wrapper); } catch (_) {}
       setIsDownloadingPDF(false);
       showToast(lang === 'tr' ? 'Yükleme sırasında hata oluştu.' : 'Error generating PDF.');
     }
