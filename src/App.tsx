@@ -6,6 +6,7 @@ import {
   Calendar, 
   CheckCircle2, 
   Compass, 
+  ChevronLeft,
   ChevronRight, 
   X, 
   Info,
@@ -20,7 +21,10 @@ import {
   Church,
   Globe,
   Sun,
-  Moon
+  Moon,
+  Headphones,
+  Share,
+  Download
 } from 'lucide-react';
 import { MapContainer, TileLayer, Marker, Popup, Polyline, useMap } from 'react-leaflet';
 import L from 'leaflet';
@@ -250,6 +254,116 @@ export default function App() {
   const [showHowItWorks, setShowHowItWorks] = useState(false);
   const [lang, setLang] = useState<'tr' | 'en'>('tr');
   const [theme, setTheme] = useState<'light' | 'dark'>('light');
+
+  // New Smart UI states
+  const [isMobileNavOpen, setIsMobileNavOpen] = useState(false);
+  const [activeAudioVenue, setActiveAudioVenue] = useState<Venue | null>(null);
+  const [isAudioPlaying, setIsAudioPlaying] = useState<boolean>(false);
+  const [audioProgress, setAudioProgress] = useState<number>(0);
+
+  // Sharing, toast notification, auto-drawing, and download states
+  const [toastMessage, setToastMessage] = useState<string | null>(null);
+  const [isDownloadingPDF, setIsDownloadingPDF] = useState<boolean>(false);
+  const [shouldAutoDraw, setShouldAutoDraw] = useState<boolean>(false);
+
+  const showToast = (msg: string) => {
+    setToastMessage(msg);
+    setTimeout(() => {
+      setToastMessage(null);
+    }, 3000);
+  };
+
+  useEffect(() => {
+    let interval: NodeJS.Timeout;
+    if (isAudioPlaying) {
+      interval = setInterval(() => {
+        setAudioProgress(prev => {
+          if (prev >= 100) {
+            setIsAudioPlaying(false);
+            if ('speechSynthesis' in window) {
+              window.speechSynthesis.cancel();
+            }
+            return 0;
+          }
+          return prev + 1;
+        });
+      }, 300);
+    }
+    return () => clearInterval(interval);
+  }, [isAudioPlaying]);
+
+  // SpeechSynthesis audio engine implementation for premium audio guide experience
+  useEffect(() => {
+    if (!('speechSynthesis' in window)) return;
+
+    if (activeAudioVenue && isAudioPlaying) {
+      window.speechSynthesis.cancel(); // cancel any active narration first
+      
+      const text = getVenueNarration(activeAudioVenue);
+      const utterance = new SpeechSynthesisUtterance(text);
+      utterance.lang = lang === 'tr' ? 'tr-TR' : 'en-US';
+      utterance.rate = 1.05; // slightly faster and pleasant pace
+
+      // Try to find native voices
+      const voices = window.speechSynthesis.getVoices();
+      const voice = voices.find(v => 
+        lang === 'tr' ? v.lang.startsWith('tr') : v.lang.startsWith('en')
+      );
+      if (voice) {
+        utterance.voice = voice;
+      }
+
+      utterance.onend = () => {
+        setIsAudioPlaying(false);
+        setAudioProgress(100);
+      };
+
+      utterance.onerror = () => {
+        setIsAudioPlaying(false);
+      };
+
+      window.speechSynthesis.speak(utterance);
+    } else {
+      window.speechSynthesis.cancel();
+    }
+
+    return () => {
+      if ('speechSynthesis' in window) {
+        window.speechSynthesis.cancel();
+      }
+    };
+  }, [activeAudioVenue, isAudioPlaying, lang]);
+
+  const getVenueNarration = (venue: Venue) => {
+    const isTr = lang === 'tr';
+    if (venue.isim.includes("Ayasofya") || venue.isim.includes("Hagia Sophia")) {
+      return isTr 
+        ? "Ayasofya, dünya mimarlık tarihinin günümüze ulaşan en görkemli yapılarından biridir. Bizans İmparatoru I. Justinianus tarafından yaptırılan bu başyapıt, Doğu ve Batı sentezinin en kutsal temsilcisidir."
+        : "Hagia Sophia is one of the most magnificent architectural wonders of the world. Commissioned by Emperor Justinian, this masterpiece represents the sacred synthesis of East and West.";
+    }
+    if (venue.isim.includes("Topkapı") || venue.isim.includes("Topapi")) {
+      return isTr
+        ? "Topkapı Sarayı, 400 yıl boyunca Osmanlı padişahlarının yönetim ve ikamet merkezi olmuştur. Fatih Sultan Mehmet tarafından inşa ettirilen bu muazzam saray kompleksi, imparatorluk sırlarını barındırır."
+        : "Topkapi Palace served as the administrative and royal residence of Ottoman sultans for nearly 400 years. Commissioned by Mehmed the Conqueror, it holds the deep secrets of an empire.";
+    }
+    const name = isTr ? venue.isim : (venue.isim_en || venue.isim);
+    const summary = isTr ? venue.kisa_tarihce : (venue.kisa_tarihce_en || venue.kisa_tarihce);
+    return isTr
+      ? `${name}, İstanbul'un eşsiz tarihini ve zengin kültürünü yansıtan simgelerden biridir. Gözlerinizi kapatın ve bu harika mekanın asırlık hikayelerini dinleyin: ${summary}`
+      : `${name} is one of the timeless symbols reflecting Istanbul's magnificent history and rich heritage. Close your eyes and listen to its century-old whispers: ${summary}`;
+  };
+  
+  const categoryScrollRef = React.useRef<HTMLDivElement>(null);
+
+  const scrollCategories = (direction: 'left' | 'right') => {
+    if (categoryScrollRef.current) {
+      const scrollAmount = 240;
+      categoryScrollRef.current.scrollBy({
+        left: direction === 'left' ? -scrollAmount : scrollAmount,
+        behavior: 'smooth'
+      });
+    }
+  };
   
   const [venues, setVenues] = useState<Venue[]>([]);
   const [isLoadingVenues, setIsLoadingVenues] = useState<boolean>(true);
@@ -286,6 +400,78 @@ export default function App() {
     loadData();
   }, []);
 
+  // Load query params on load and trigger auto routing
+  useEffect(() => {
+    try {
+      const params = new URLSearchParams(window.location.search);
+      const tabParam = params.get('tab');
+      const hotelParam = params.get('hotel');
+      const districtParam = params.get('district');
+      const daysParam = params.get('days');
+      const tempoParam = params.get('tempo');
+      const catsParam = params.get('cats');
+
+      let hasRouteParams = false;
+
+      if (tabParam === 'otel' || tabParam === 'semt') {
+        setActiveTab(tabParam);
+        hasRouteParams = true;
+      }
+      if (hotelParam) {
+        const foundHotel = ISTANBUL_DATA.populer_oteller.find(
+          h => h.isim.toLowerCase() === hotelParam.toLowerCase() || h.isim.toLowerCase().includes(hotelParam.toLowerCase())
+        );
+        if (foundHotel) {
+          setSelectedHotel(foundHotel);
+        }
+        hasRouteParams = true;
+      }
+      if (districtParam) {
+        const foundDistrict = ALL_DISTRICTS.find(d => d.toLowerCase() === districtParam.toLowerCase());
+        if (foundDistrict) {
+          setSelectedDistrict(foundDistrict);
+        }
+        hasRouteParams = true;
+      }
+      if (daysParam) {
+        const parsedDays = parseInt(daysParam, 10);
+        if (!isNaN(parsedDays) && parsedDays >= 1 && parsedDays <= 10) {
+          setDuration(parsedDays);
+        }
+        hasRouteParams = true;
+      }
+      if (tempoParam) {
+        const parsedTempo = parseInt(tempoParam, 10);
+        if (!isNaN(parsedTempo) && parsedTempo >= 1 && parsedTempo <= 10) {
+          setPace(parsedTempo);
+        }
+        hasRouteParams = true;
+      }
+      if (catsParam) {
+        const parsedCats = catsParam.split(',').filter(c => prefOptions.includes(c));
+        if (parsedCats.length > 0) {
+          setPreferences(parsedCats);
+        }
+        hasRouteParams = true;
+      }
+
+      if (hasRouteParams) {
+        setActiveScreen('app');
+        setShouldAutoDraw(true);
+      }
+    } catch (e) {
+      console.warn("Error parsing URL params:", e);
+    }
+  }, []);
+
+  // Monitor auto draw trigger
+  useEffect(() => {
+    if (shouldAutoDraw && !isLoadingVenues && venues.length > 0) {
+      setShouldAutoDraw(false);
+      drawSmartRoute();
+    }
+  }, [shouldAutoDraw, isLoadingVenues, venues]);
+
   const togglePreference = (pref: string) => {
     setPreferences(prev => 
       prev.includes(pref) ? prev.filter(p => p !== pref) : [...prev, pref]
@@ -308,6 +494,26 @@ export default function App() {
   const drawSmartRoute = async () => {
     setIsGenerating(true);
     setIsExplorerMode(false);
+
+    // Dynamic URL Parameter Integration
+    try {
+      const urlParams = new URLSearchParams();
+      urlParams.set('tab', activeTab);
+      if (activeTab === 'otel') {
+        urlParams.set('hotel', selectedHotel?.isim || '');
+      } else {
+        urlParams.set('district', selectedDistrict || '');
+      }
+      urlParams.set('days', duration.toString());
+      urlParams.set('tempo', pace.toString());
+      if (preferences.length > 0) {
+        urlParams.set('cats', preferences.join(','));
+      }
+      const newUrl = `${window.location.pathname}?${urlParams.toString()}`;
+      window.history.pushState({}, '', newUrl);
+    } catch (urlErr) {
+      console.warn("Could not sync state to URL:", urlErr);
+    }
 
     let currentVenues = venues;
     if (isLoadingVenues || currentVenues.length === 0) {
@@ -397,6 +603,149 @@ export default function App() {
     setVisibleDay(null);
   };
 
+  const handleShareRoute = () => {
+    try {
+      const urlParams = new URLSearchParams();
+      urlParams.set('tab', activeTab);
+      if (activeTab === 'otel') {
+        urlParams.set('hotel', selectedHotel?.isim || '');
+      } else {
+        urlParams.set('district', selectedDistrict || '');
+      }
+      urlParams.set('days', duration.toString());
+      urlParams.set('tempo', pace.toString());
+      if (preferences.length > 0) {
+        urlParams.set('cats', preferences.join(','));
+      }
+      const fullShareUrl = `${window.location.origin}${window.location.pathname}?${urlParams.toString()}`;
+      
+      navigator.clipboard.writeText(fullShareUrl).then(() => {
+        showToast(lang === 'tr' ? 'Rota linki panoya kopyalandı!' : 'Route link copied to clipboard!');
+      }).catch(err => {
+        console.error("Could not copy link:", err);
+        showToast(lang === 'tr' ? 'Link kopyalanamadı.' : 'Could not copy link.');
+      });
+    } catch (e) {
+      console.error(e);
+      showToast(lang === 'tr' ? 'Hata oluştu.' : 'An error occurred.');
+    }
+  };
+
+  const handleDownloadPDF = () => {
+    if (routeData.length === 0) return;
+    setIsDownloadingPDF(true);
+
+    // Create custom off-screen container for PDF generation
+    const container = document.createElement('div');
+    container.style.position = 'absolute';
+    container.style.left = '-9999px';
+    container.style.top = '-9999px';
+    container.style.width = '790px'; // standard printable representation
+    container.style.padding = '40px';
+    container.style.backgroundColor = '#ffffff';
+    container.style.color = '#1e293b';
+    container.style.fontFamily = 'Inter, system-ui, sans-serif';
+
+    const startingPoint = activeTab === 'otel' ? selectedHotel.isim : selectedDistrict;
+    const catLabels = preferences.map(pref => (TRANSLATIONS[lang].cats as any)[pref] || pref).join(', ');
+
+    container.innerHTML = `
+      <div style="border-bottom: 2px solid #ebf2ff; padding-bottom: 24px; margin-bottom: 30px;">
+        <div style="display: flex; justify-content: space-between; align-items: flex-start;">
+          <div>
+            <h1 style="font-size: 26px; font-weight: 800; color: #1e3a8a; margin: 0; text-transform: uppercase; letter-spacing: -0.025em; line-height: 1.2;">İSTANBUL SEYAHAT PLANI</h1>
+            <p style="font-size: 13px; color: #64748b; margin: 4px 0 0 0; font-weight: 500; text-transform: uppercase; letter-spacing: 0.05em;">${lang === 'tr' ? 'AKILLI ROTASYON REHBERİ' : 'DYNAMIC SMART TRAVEL GUIDE'}</p>
+          </div>
+          <div style="text-align: right;">
+            <div style="font-size: 11px; font-weight: 700; color: #0284c7; background-color: #f0f9ff; padding: 4px 12px; border-radius: 9999px; display: inline-block; font-family: monospace;">
+              ${new Date().toLocaleDateString(lang === 'tr' ? 'tr-TR' : 'en-US')}
+            </div>
+          </div>
+        </div>
+
+        <div style="display: grid; grid-template-columns: repeat(2, 1fr); gap: 16px; margin-top: 24px; background-color: #f8fafc; padding: 16px; border-radius: 16px; border: 1px solid #f1f5f9;">
+          <div>
+            <span style="font-size: 10px; font-weight: 800; color: #94a3b8; text-transform: uppercase; display: block; margin-bottom: 2px;">${lang === 'tr' ? 'BAŞLANGIÇ NOKTASI' : 'STARTING POINT'}</span>
+            <span style="font-size: 12px; font-weight: 750; color: #0f172a;">${startingPoint}</span>
+          </div>
+          <div>
+            <span style="font-size: 10px; font-weight: 800; color: #94a3b8; text-transform: uppercase; display: block; margin-bottom: 2px;">${lang === 'tr' ? 'SÜRE VE TEMPO' : 'DURATION & PACE'}</span>
+            <span style="font-size: 12px; font-weight: 750; color: #0f172a;">${duration} ${lang === 'tr' ? 'Gün' : 'Days'} • ${pace} ${lang === 'tr' ? 'Mekan/Gün' : 'Venues/Day'}</span>
+          </div>
+          <div style="grid-column: span 2;">
+            <span style="font-size: 10px; font-weight: 800; color: #94a3b8; text-transform: uppercase; display: block; margin-bottom: 2px;">${lang === 'tr' ? 'SEÇİLİ İLGİ ALANLARI' : 'SELECTED INTERESTS'}</span>
+            <span style="font-size: 11px; font-weight: 600; color: #475569;">${catLabels || (lang === 'tr' ? 'Tümü' : 'All')}</span>
+          </div>
+        </div>
+      </div>
+
+      <div style="display: flex; flex-direction: column; gap: 24px;">
+        ${routeData.map(day => `
+          <div style="background-color: #ffffff; border: 1px solid #f1f5f9; border-radius: 20px; padding: 20px; page-break-inside: avoid; box-shadow: 0 4px 6px -1px rgba(0,0,0,0.03);">
+            <div style="display: flex; align-items: center; gap: 8px; margin-bottom: 16px; border-bottom: 1px solid #f1f5f9; padding-bottom: 12px;">
+              <span style="background-color: #2563eb; color: #ffffff; width: 28px; height: 28px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 11px; font-weight: 800;">${day.day}</span>
+              <h2 style="font-size: 14px; font-weight: 800; color: #1e293b; margin: 0; text-transform: uppercase; letter-spacing: 0.05em;">${day.day}. ${lang === 'tr' ? 'GÜN PLANI' : 'DAY PLAN'}</h2>
+            </div>
+            
+            <div style="display: flex; flex-direction: column; gap: 14px;">
+              ${day.venues.map((v, vIdx) => `
+                <div style="display: flex; gap: 14px;">
+                  <div style="width: 22px; font-size: 11px; font-weight: 800; color: #2563eb; display: flex; align-items: center; justify-content: center; height: 22px; background-color: #eff6ff; border-radius: 8px; shrink: 0;">
+                    ${vIdx + 1}
+                  </div>
+                  <div style="flex: 1;">
+                    <h3 style="font-size: 12px; font-weight: 750; color: #0f172a; margin: 0; text-transform: uppercase;">
+                      ${lang === 'tr' ? v.isim : (v.isim_en || v.isim)}
+                    </h3>
+                    <div style="font-size: 9px; font-weight: 700; color: #64748b; text-transform: uppercase; margin-top: 2px;">
+                      ${lang === 'tr' ? v.tur : (v.tur_en || v.tur)}
+                    </div>
+                    <p style="font-size: 11px; color: #475569; margin: 6px 0 0 0; line-height: 1.5; font-style: italic;">
+                      "${lang === 'tr' ? v.kisa_tarihce : (v.kisa_tarihce_en || v.kisa_tarihce)}"
+                    </p>
+                  </div>
+                </div>
+              `).join('')}
+            </div>
+          </div>
+        `).join('')}
+      </div>
+
+      <div style="margin-top: 40px; border-top: 1px solid #f1f5f9; padding-top: 16px; text-align: center; font-size: 9px; color: #94a3b8; font-weight: 700; text-transform: uppercase; letter-spacing: 0.05em;">
+        ${lang === 'tr' ? 'İSTANBUL SEYAHAT REHBERİ YAPAY ZEKA AKILLI PLANLAMA MOTORU' : 'GENERATED BY ISTANBUL SMART TRAVEL AI PLANNING ENGINE'}
+      </div>
+    `;
+
+    document.body.appendChild(container);
+
+    const opt = {
+      margin:       12,
+      filename:     `istanbul-seyahat-plani-${duration}-gunluk.pdf`,
+      image:        { type: 'jpeg', quality: 0.98 },
+      html2canvas:  { scale: 2, useCORS: true },
+      jsPDF:        { unit: 'mm', format: 'a4', orientation: 'portrait' }
+    };
+
+    // @ts-ignore
+    const html2pdf = window.html2pdf;
+    if (html2pdf) {
+      html2pdf().from(container).set(opt).save().then(() => {
+        document.body.removeChild(container);
+        setIsDownloadingPDF(false);
+        showToast(lang === 'tr' ? 'PDF başarıyla indirildi!' : 'PDF downloaded successfully!');
+      }).catch((e: any) => {
+        console.error("PDF generation err:", e);
+        try { document.body.removeChild(container); } catch (_) {}
+        setIsDownloadingPDF(false);
+        showToast(lang === 'tr' ? 'Yükleme sırasında hata oluştu.' : 'Error generating PDF.');
+      });
+    } else {
+      try { document.body.removeChild(container); } catch (_) {}
+      setIsDownloadingPDF(false);
+      showToast(lang === 'tr' ? 'PDF kütüphanesi yüklenemedi.' : 'PDF library could not be loaded.');
+    }
+  };
+
   return (
     <div className={cn("min-h-screen flex flex-col font-sans overflow-hidden transition-colors duration-500", theme === 'dark' ? "bg-slate-950 text-slate-100" : "bg-slate-50 text-slate-800")}>
       <AnimatePresence mode="wait">
@@ -461,8 +810,10 @@ export default function App() {
                   <button onClick={() => setShowHowItWorks(true)} className="hover:text-blue-600 transition-colors uppercase">{t.about}</button>
                   <button 
                     onClick={() => {
+                      clearRoute();
                       setIsExplorerMode(true);
                       setIsSidebarOpen(false);
+                      setIsRightSidebarOpen(false);
                       const mapEl = document.getElementById('map-container');
                       if (mapEl) mapEl.scrollIntoView({ behavior: 'smooth' });
                     }} 
@@ -483,7 +834,10 @@ export default function App() {
                   >
                     {theme === 'light' ? <Moon size={20} /> : <Sun size={20} />}
                   </button>
-                  <button className="lg:hidden p-3 bg-slate-100 dark:bg-slate-800 rounded-xl text-slate-800 dark:text-white" onClick={() => setIsSidebarOpen(!isSidebarOpen)}>
+                  <button 
+                    className="lg:hidden p-3 bg-slate-100 dark:bg-slate-800 rounded-xl text-slate-800 dark:text-white active:scale-95 transition-transform" 
+                    onClick={() => setIsMobileNavOpen(true)}
+                  >
                     <Menu size={24} />
                   </button>
                 </div>
@@ -701,13 +1055,22 @@ export default function App() {
                     )}
 
                     {routeData.length > 0 && (
-                      <button 
-                        onClick={clearRoute}
-                        className="w-full py-4 text-slate-500 hover:text-red-500 text-[13px] font-bold uppercase tracking-widest transition-colors flex items-center justify-center gap-2"
-                      >
-                        <i className="fas fa-trash-alt"></i>
-                        {lang === 'tr' ? 'ROTAYI TEMİZLE' : 'CLEAR ROUTE'}
-                      </button>
+                      <div className="flex flex-col gap-2 w-full">
+                        <button 
+                          onClick={handleShareRoute}
+                          className="w-full h-12 bg-blue-600/10 hover:bg-blue-600/20 text-blue-600 dark:text-blue-400 dark:bg-blue-500/10 dark:hover:bg-blue-500/20 rounded-2xl font-black text-xs uppercase tracking-widest transition-all flex items-center justify-center gap-2 border border-blue-100 dark:border-blue-950/40 active:scale-95"
+                        >
+                          <Share size={15} />
+                          {lang === 'tr' ? 'ROTAYI PAYLAŞ' : 'SHARE ROUTE'}
+                        </button>
+                        <button 
+                          onClick={clearRoute}
+                          className="w-full py-3.5 text-slate-500 hover:text-red-500 text-[11px] font-bold uppercase tracking-widest transition-colors flex items-center justify-center gap-2"
+                        >
+                          <i className="fas fa-trash-alt"></i>
+                          {lang === 'tr' ? 'ROTAYI TEMİZLE' : 'CLEAR ROUTE'}
+                        </button>
+                      </div>
                     )}
                   </div>
                 </div>
@@ -736,22 +1099,45 @@ export default function App() {
                       
                       <div className="w-px h-6 lg:h-10 bg-slate-200/50 dark:bg-slate-700/50 mx-1 hidden sm:block" />
                       
-                      <div className="flex-1 flex gap-2 lg:gap-3 overflow-x-auto no-scrollbar py-2 px-1">
-                        {prefOptions.map(pref => (
-                          <button
-                            key={pref}
-                            onClick={() => togglePreference(pref)}
-                            className={cn(
-                              "px-4 lg:px-6 py-2 lg:py-3 rounded-xl lg:rounded-2xl text-[10px] lg:text-[12px] font-bold uppercase tracking-wider whitespace-nowrap transition-all flex items-center gap-2 lg:gap-3 border-2",
-                              preferences.includes(pref) 
-                                ? "bg-blue-600 text-white border-blue-500 shadow-[0_10px_25px_rgba(37,99,235,0.3)] scale-105" 
-                                : "bg-white/50 dark:bg-slate-800/50 text-slate-500 dark:text-slate-400 border-transparent hover:bg-white dark:hover:bg-slate-800"
-                            )}
-                          >
-                            <i className={cn("fa-solid text-xs lg:text-sm", catToIcon[pref])}></i>
-                            <span>{(t.cats as any)[pref]}</span>
-                          </button>
-                        ))}
+                      <div className="flex-1 flex items-center gap-1.5 overflow-hidden">
+                        {/* Left Scroll Button */}
+                        <button 
+                          onClick={() => scrollCategories('left')}
+                          className="shrink-0 w-8 h-8 lg:w-9 lg:h-9 rounded-xl bg-slate-100 dark:bg-slate-800 text-slate-500 dark:text-slate-400 flex items-center justify-center hover:bg-blue-600 hover:text-white transition-all shadow-sm active:scale-95 border border-slate-200/40 dark:border-slate-700/40"
+                          title="Sola Kaydır"
+                        >
+                          <ChevronLeft size={16} />
+                        </button>
+
+                        <div 
+                          ref={categoryScrollRef}
+                          className="flex-1 flex gap-2 lg:gap-3 overflow-x-auto no-scrollbar py-2 px-1 scroll-smooth"
+                        >
+                          {prefOptions.map(pref => (
+                            <button
+                              key={pref}
+                              onClick={() => togglePreference(pref)}
+                              className={cn(
+                                "px-4 lg:px-6 py-2 lg:py-3 rounded-xl lg:rounded-2xl text-[10px] lg:text-[12px] font-bold uppercase tracking-wider whitespace-nowrap transition-all flex items-center gap-2 lg:gap-3 border-2",
+                                preferences.includes(pref) 
+                                  ? "bg-blue-600 text-white border-blue-500 shadow-[0_10px_25px_rgba(37,99,235,0.3)] scale-105" 
+                                  : "bg-white/50 dark:bg-slate-800/50 text-slate-500 dark:text-slate-400 border-transparent hover:bg-white dark:hover:bg-slate-800"
+                              )}
+                            >
+                              <i className={cn("fa-solid text-xs lg:text-sm", catToIcon[pref])}></i>
+                              <span>{(t.cats as any)[pref]}</span>
+                            </button>
+                          ))}
+                        </div>
+
+                        {/* Right Scroll Button */}
+                        <button 
+                          onClick={() => scrollCategories('right')}
+                          className="shrink-0 w-8 h-8 lg:w-9 lg:h-9 rounded-xl bg-slate-100 dark:bg-slate-800 text-slate-500 dark:text-slate-400 flex items-center justify-center hover:bg-blue-600 hover:text-white transition-all shadow-sm active:scale-95 border border-slate-200/40 dark:border-slate-700/40"
+                          title="Sağa Kaydır"
+                        >
+                          <ChevronRight size={16} />
+                        </button>
                       </div>
 
                       <div className="hidden lg:flex items-center gap-3 pr-2">
@@ -893,7 +1279,7 @@ export default function App() {
                       initial={{ y: 100, opacity: 0 }}
                       animate={{ y: 0, opacity: 1 }}
                       exit={{ y: 100, opacity: 0 }}
-                      className="absolute bottom-6 md:bottom-10 left-1/2 -translate-x-1/2 w-[92%] max-w-xl z-[1500]"
+                      className="fixed bottom-16 lg:bottom-20 left-1/2 -translate-x-1/2 w-[92%] max-w-xl z-[1550]"
                     >
                       <div className="bg-white dark:bg-slate-900 rounded-[2rem] md:rounded-[3rem] shadow-[0_30px_60px_-12px_rgba(0,0,0,0.4)] overflow-hidden border border-slate-100 dark:border-slate-800 flex flex-col md:flex-row h-auto md:h-72">
                         <div className="w-full md:w-1/2 h-44 md:h-full relative group">
@@ -923,15 +1309,27 @@ export default function App() {
                             </p>
                           </div>
                           
-                          <div className="flex items-center gap-3 mt-6">
+                          <div className="flex flex-row items-center gap-2 md:gap-3 mt-4 md:mt-6 w-full">
                               <button 
                                 onClick={() => {
                                   const url = `https://www.google.com/maps/dir/?api=1&destination=${selectedVenue.koordinat.enlem},${selectedVenue.koordinat.boylam}`;
                                   window.open(url, '_blank');
                                 }}
-                                className="flex-1 bg-blue-600 text-white h-14 rounded-2xl font-black text-xs uppercase tracking-widest hover:bg-blue-700 transition-all flex items-center justify-center gap-2 shadow-lg shadow-blue-500/30"
+                                className="flex-1 min-w-0 bg-blue-600 text-white h-12 md:h-14 rounded-2xl font-black text-[9px] min-[375px]:text-[10px] md:text-xs uppercase tracking-wide min-[375px]:tracking-wider hover:bg-blue-700 transition-all flex items-center justify-center gap-1 md:gap-2 shadow-lg shadow-blue-500/30 px-2 min-[375px]:px-3 md:px-4 active:scale-95"
                               >
-                                 <Compass size={16} /> <span className="inline-block">{t.directions}</span>
+                                 <Compass size={14} className="shrink-0" /> 
+                                 <span className="whitespace-nowrap">{t.directions}</span>
+                              </button>
+                              <button 
+                                onClick={() => {
+                                  setActiveAudioVenue(selectedVenue);
+                                  setIsAudioPlaying(true);
+                                  setAudioProgress(0);
+                                }}
+                                className="flex-1 min-w-0 bg-gradient-to-r from-emerald-500 to-teal-600 text-white h-12 md:h-14 rounded-2xl font-black text-[9px] min-[375px]:text-[10px] md:text-xs uppercase tracking-wide min-[375px]:tracking-wider hover:from-emerald-600 hover:to-teal-700 transition-all flex items-center justify-center gap-1 md:gap-2 shadow-lg shadow-emerald-500/20 active:scale-95 px-2 min-[375px]:px-3 md:px-4"
+                              >
+                                 <Headphones size={14} className="text-white shrink-0 animate-pulse" />
+                                 <span className="whitespace-nowrap">{t.audioGuide || (lang === 'tr' ? 'Sesli Rehber' : 'Audio Guide')}</span>
                               </button>
                           </div>
                         </div>
@@ -943,8 +1341,14 @@ export default function App() {
                 {/* Sidebar toggle button (floating) */}
                 {!isSidebarOpen && !isExplorerMode && (
                   <button 
-                    onClick={() => setIsSidebarOpen(true)}
-                    className="absolute top-6 lg:top-10 left-6 lg:left-10 z-[1100] bg-white dark:bg-slate-900 px-6 lg:px-8 py-3 lg:py-4 rounded-2xl lg:rounded-3xl shadow-2xl border border-slate-50 dark:border-slate-800 flex items-center gap-3 lg:gap-4 hover:scale-105 transition-all text-blue-600 group active:scale-95"
+                    onClick={() => {
+                      setIsSidebarOpen(true);
+                      setIsRightSidebarOpen(false);
+                    }}
+                    className={cn(
+                      "absolute top-6 lg:top-10 left-6 lg:left-10 z-[1100] bg-white dark:bg-slate-900 px-6 lg:px-8 py-3 lg:py-4 rounded-2xl lg:rounded-3xl shadow-2xl border border-slate-50 dark:border-slate-800 flex items-center gap-3 lg:gap-4 hover:scale-105 transition-all text-blue-600 group active:scale-95",
+                      isViewingRoute && isRightSidebarOpen ? "hidden" : "hidden lg:flex"
+                    )}
                   >
                     <div className="w-2 h-2 lg:w-2.5 lg:h-2.5 bg-blue-600 rounded-full animate-pulse shadow-[0_0_10px_#2563eb]" />
                     <span className="text-[9px] lg:text-[11px] font-black uppercase tracking-[0.2em]">{t.planner}</span>
@@ -962,12 +1366,18 @@ export default function App() {
                     >
                       {/* Toggle Handle */}
                       <button 
-                        onClick={() => setIsRightSidebarOpen(!isRightSidebarOpen)}
+                        onClick={() => {
+                          const nextState = !isRightSidebarOpen;
+                          setIsRightSidebarOpen(nextState);
+                          if (nextState) {
+                            setIsSidebarOpen(false);
+                          }
+                        }}
                         className={cn(
                           "absolute right-full top-24 h-14 bg-white dark:bg-slate-900 border border-slate-200/80 dark:border-slate-800 rounded-l-3xl flex items-center justify-center text-blue-600 shadow-2xl transition-all duration-300 hover:text-blue-700 active:scale-95 hover:bg-slate-50 dark:hover:bg-slate-800/80 group",
                           isRightSidebarOpen 
                             ? "w-12 hidden sm:flex" 
-                            : "w-auto px-6 gap-3 border-r-0 flex"
+                            : "w-auto px-6 gap-3 border-r-0 hidden lg:flex"
                         )}
                         title={isRightSidebarOpen ? (lang === 'tr' ? 'Kapat' : 'Close') : (lang === 'tr' ? 'Planı Gör' : 'View Plan')}
                       >
@@ -1041,24 +1451,68 @@ export default function App() {
                                     className="group p-4 bg-white dark:bg-slate-800 border border-slate-100 dark:border-slate-700 rounded-3xl hover:border-blue-200 shadow-sm hover:shadow-2xl hover:shadow-blue-50 dark:hover:shadow-blue-900/20 transition-all cursor-pointer"
                                     onClick={() => setSelectedVenue(v)}
                                   >
-                                    <div className="flex items-center gap-4">
-                                      <div className="w-fit h-8 px-3 bg-slate-900 dark:bg-slate-600 text-white text-[10px] font-black rounded-xl flex items-center justify-center group-hover:bg-blue-600 transition-colors uppercase whitespace-nowrap">
-                                        {day.day}. {t.day} - {vIdx + 1}
+                                    <div className="flex items-center justify-between gap-4 w-full">
+                                      <div className="flex items-center gap-3 overflow-hidden">
+                                        <div className="w-fit h-8 px-3 bg-slate-900 dark:bg-slate-600 text-white text-[10px] font-black rounded-xl flex items-center justify-center group-hover:bg-blue-600 transition-colors uppercase whitespace-nowrap">
+                                          {day.day}. {t.day} - {vIdx + 1}
+                                        </div>
+                                        <div className="overflow-hidden">
+                                          <div className="text-xs font-black text-slate-800 dark:text-slate-200 truncate group-hover:text-blue-600 transition-colors uppercase tracking-tight">
+                                            {lang === 'tr' ? v.isim : (v.isim_en || v.isim)}
+                                          </div>
+                                          <div className="text-[10px] text-slate-400 font-bold uppercase tracking-widest mt-0.5">
+                                            {lang === 'tr' ? v.tur : (v.tur_en || v.tur)}
+                                          </div>
+                                        </div>
                                       </div>
-                                    <div className="flex-1 overflow-hidden">
-                                      <div className="text-xs font-black text-slate-800 dark:text-slate-200 truncate group-hover:text-blue-600 transition-colors uppercase tracking-tight">
-                                        {lang === 'tr' ? v.isim : (v.isim_en || v.isim)}
-                                      </div>
-                                      <div className="text-[10px] text-slate-400 font-bold uppercase tracking-widest mt-0.5">
-                                        {lang === 'tr' ? v.tur : (v.tur_en || v.tur)}
-                                      </div>
-                                    </div>
+                                      
+                                      <button 
+                                        onClick={(e) => {
+                                          e.stopPropagation(); // Avoid opening full card modal
+                                          setActiveAudioVenue(v);
+                                          setIsAudioPlaying(true);
+                                          setAudioProgress(0);
+                                        }}
+                                        className="shrink-0 w-8 h-8 rounded-full bg-slate-100 hover:bg-emerald-100 text-slate-500 hover:text-emerald-600 dark:bg-slate-700 dark:hover:bg-slate-800 flex items-center justify-center transition-colors shadow-sm"
+                                        title={t.audioGuide || "Sesli Rehber"}
+                                      >
+                                        <i className="fa-solid fa-volume-high text-[10px]" />
+                                      </button>
                                     </div>
                                   </motion.div>
                                 ))}
                               </div>
                             </div>
                           ))}
+                        </div>
+
+                        {/* Download & Share Actions */}
+                        <div className="p-4 md:p-6 border-t border-slate-100 dark:border-slate-800 bg-white dark:bg-slate-900 shrink-0 flex flex-col gap-2">
+                          <button 
+                            onClick={handleShareRoute}
+                            className="w-full h-11 bg-blue-600 text-white rounded-2xl font-black text-[10px] md:text-sm uppercase tracking-widest hover:bg-blue-700 transition-all flex items-center justify-center gap-2 shadow-lg shadow-blue-500/20 active:scale-95 cursor-pointer"
+                          >
+                            <Share size={15} />
+                            {lang === 'tr' ? 'ROTAYI PAYLAŞ' : 'SHARE ROUTE'}
+                          </button>
+                          
+                          <button 
+                            onClick={handleDownloadPDF}
+                            disabled={isDownloadingPDF}
+                            className="w-full h-11 bg-slate-50 hover:bg-slate-100 dark:bg-slate-800 dark:hover:bg-slate-700/80 text-slate-700 dark:text-slate-300 rounded-2xl font-black text-[10px] md:text-sm uppercase tracking-widest transition-all flex items-center justify-center gap-2 active:scale-95 border border-slate-100 dark:border-slate-700 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
+                          >
+                            {isDownloadingPDF ? (
+                              <>
+                                <div className="w-4 h-4 border-2 border-slate-400 border-t-blue-600 rounded-full animate-spin" />
+                                {lang === 'tr' ? 'PDF HAZIRLANIYOR...' : 'PREPARING PDF...'}
+                              </>
+                            ) : (
+                              <>
+                                <Download size={15} className="text-red-500" />
+                                {lang === 'tr' ? 'LİSTEYİ İNDİR (PDF)' : 'DOWNLOAD ITINERARY (PDF)'}
+                              </>
+                            )}
+                          </button>
                         </div>
                       </div>
                     </motion.aside>
@@ -1138,6 +1592,385 @@ export default function App() {
                 {t.ready}
               </button>
             </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* Mobile Navigation Menu Drawer Overlay */}
+      <AnimatePresence>
+        {isMobileNavOpen && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 bg-slate-950/60 backdrop-blur-md z-[5000] lg:hidden"
+            onClick={() => setIsMobileNavOpen(false)}
+          >
+            <motion.div
+              initial={{ x: "100%" }}
+              animate={{ x: 0 }}
+              exit={{ x: "100%" }}
+              transition={{ type: "spring", damping: 25, stiffness: 200 }}
+              className="absolute top-0 right-0 h-full w-[85%] max-w-sm bg-white dark:bg-slate-900 shadow-[0_0_50px_rgba(0,0,0,0.3)] flex flex-col p-6 border-l border-slate-100 dark:border-slate-800/80"
+              onClick={(e) => e.stopPropagation()}
+            >
+              <div className="flex items-center justify-between border-b border-slate-100 dark:border-slate-800 pb-5 mb-6">
+                <div className="flex items-center gap-2">
+                  <div className="w-8 h-8 bg-blue-600 rounded-xl flex items-center justify-center text-white shadow-lg shadow-blue-500/30">
+                    <div className="w-4 h-4 border-2 border-white rotate-45" />
+                  </div>
+                  <span className="text-base font-black uppercase tracking-tight text-slate-900 dark:text-white">
+                    İstanbul <span className="text-blue-600">Rehberi</span>
+                  </span>
+                </div>
+                <button 
+                  onClick={() => setIsMobileNavOpen(false)}
+                  className="p-2 rounded-lg bg-slate-100 dark:bg-slate-800 text-slate-500 hover:text-red-500 active:scale-95 transition-all"
+                >
+                  <X size={20} />
+                </button>
+              </div>
+
+              {/* Navigation Links inside Drawer */}
+              <div className="flex-1 flex flex-col gap-4 overflow-y-auto pr-1">
+                <button 
+                  onClick={() => {
+                    setActiveScreen('landing');
+                    setIsMobileNavOpen(false);
+                  }}
+                  className="flex items-center gap-4 p-4 rounded-2xl bg-slate-50 hover:bg-slate-100 dark:bg-slate-800/50 dark:hover:bg-slate-800 text-left transition-all group border border-transparent hover:border-blue-100 dark:hover:border-slate-700"
+                >
+                  <div className="w-10 h-10 rounded-xl bg-blue-50 dark:bg-slate-800 text-blue-600 dark:text-blue-300 flex items-center justify-center group-hover:bg-blue-600 group-hover:text-white transition-all">
+                    <Compass size={18} />
+                  </div>
+                  <div>
+                    <div className="text-xs font-black uppercase tracking-widest text-slate-900 dark:text-white">
+                      {lang === 'tr' ? 'ANA SAYFA' : 'HOME'}
+                    </div>
+                    <div className="text-[10px] text-slate-400 mt-0.5">
+                      {lang === 'tr' ? 'Giriş ekranına dön' : 'Go back to landing page'}
+                    </div>
+                  </div>
+                </button>
+
+                <button 
+                  onClick={() => {
+                    clearRoute();
+                    setIsExplorerMode(true);
+                    setIsSidebarOpen(false);
+                    setIsRightSidebarOpen(false);
+                    setIsMobileNavOpen(false);
+                    setTimeout(() => {
+                      const mapEl = document.getElementById('map-container');
+                      if (mapEl) mapEl.scrollIntoView({ behavior: 'smooth' });
+                    }, 100);
+                  }}
+                  className="flex items-center gap-4 p-4 rounded-2xl bg-slate-50 hover:bg-slate-100 dark:bg-slate-800/50 dark:hover:bg-slate-800 text-left transition-all group border border-transparent hover:border-blue-100 dark:hover:border-slate-700"
+                >
+                  <div className="w-10 h-10 rounded-xl bg-blue-50 dark:bg-slate-800 text-blue-600 dark:text-blue-300 flex items-center justify-center group-hover:bg-blue-600 group-hover:text-white transition-all">
+                    <i className="fa-solid fa-map-location-dot text-sm" />
+                  </div>
+                  <div>
+                    <div className="text-xs font-black uppercase tracking-widest text-slate-900 dark:text-white">
+                      {t.goToMap || "Haritaya Git"}
+                    </div>
+                    <div className="text-[10px] text-slate-400 mt-0.5">
+                      {lang === 'tr' ? 'Harita kâşifini doğrudan aç' : 'Explore the live map directly'}
+                    </div>
+                  </div>
+                </button>
+
+                <button 
+                  onClick={() => {
+                    setIsSidebarOpen(true);
+                    setIsExplorerMode(false);
+                    setIsMobileNavOpen(false);
+                  }}
+                  className="flex items-center gap-4 p-4 rounded-2xl bg-slate-50 hover:bg-slate-100 dark:bg-slate-800/50 dark:hover:bg-slate-800 text-left transition-all group border border-transparent hover:border-blue-100 dark:hover:border-slate-700"
+                >
+                  <div className="w-10 h-10 rounded-xl bg-blue-50 dark:bg-slate-800 text-blue-600 dark:text-blue-300 flex items-center justify-center group-hover:bg-blue-600 group-hover:text-white transition-all">
+                    <i className="fa-solid fa-route text-sm" />
+                  </div>
+                  <div>
+                    <div className="text-xs font-black uppercase tracking-widest text-slate-900 dark:text-white">
+                      {t.planner || "Seyahat Planlayıcısı"}
+                    </div>
+                    <div className="text-[10px] text-slate-400 mt-0.5">
+                      {lang === 'tr' ? 'Akıllı rota ve gezi planla' : 'Plan your custom itinerary'}
+                    </div>
+                  </div>
+                </button>
+
+                <button 
+                  onClick={() => {
+                    setShowHowItWorks(true);
+                    setIsMobileNavOpen(false);
+                  }}
+                  className="flex items-center gap-4 p-4 rounded-2xl bg-slate-50 hover:bg-slate-100 dark:bg-slate-800/50 dark:hover:bg-slate-800 text-left transition-all group border border-transparent hover:border-blue-100 dark:hover:border-slate-700"
+                >
+                  <div className="w-10 h-10 rounded-xl bg-blue-50 dark:bg-slate-800 text-blue-600 dark:text-blue-300 flex items-center justify-center group-hover:bg-blue-600 group-hover:text-white transition-all">
+                    <i className="fa-solid fa-circle-question text-sm" />
+                  </div>
+                  <div>
+                    <div className="text-xs font-black uppercase tracking-widest text-slate-900 dark:text-white">
+                      {t.howItWorks || "Nasıl Çalışır?"}
+                    </div>
+                    <div className="text-[10px] text-slate-400 mt-0.5">
+                      {lang === 'tr' ? 'Sistemin çalışma prensipleri' : 'How the smart system functions'}
+                    </div>
+                  </div>
+                </button>
+
+                <button 
+                  onClick={() => {
+                    setShowHowItWorks(true); // also covers details
+                    setIsMobileNavOpen(false);
+                  }}
+                  className="flex items-center gap-4 p-4 rounded-2xl bg-slate-50 hover:bg-slate-100 dark:bg-slate-800/50 dark:hover:bg-slate-800 text-left transition-all group border border-transparent hover:border-blue-100 dark:hover:border-slate-700"
+                >
+                  <div className="w-10 h-10 rounded-xl bg-blue-50 dark:bg-slate-800 text-blue-600 dark:text-blue-300 flex items-center justify-center group-hover:bg-blue-600 group-hover:text-white transition-all">
+                    <i className="fa-solid fa-circle-info text-sm" />
+                  </div>
+                  <div>
+                    <div className="text-xs font-black uppercase tracking-widest text-slate-900 dark:text-white">
+                      {t.about || "Hakkımızda"}
+                    </div>
+                    <div className="text-[10px] text-slate-400 mt-0.5">
+                      {lang === 'tr' ? 'Proje hakkında teknik detaylar' : 'Read project details'}
+                    </div>
+                  </div>
+                </button>
+              </div>
+
+              {/* Language Selector + Theme inside Drawer Foot */}
+              <div className="mt-auto pt-6 border-t border-slate-100 dark:border-slate-800 space-y-4">
+                <div className="flex justify-between items-center bg-slate-50 dark:bg-slate-800 p-3 rounded-2xl">
+                  <span className="text-[10px] font-black uppercase tracking-wider text-slate-400 dark:text-slate-500">
+                    {lang === 'tr' ? 'DİL SEÇİMİ' : 'LANGUAGE'}
+                  </span>
+                  <div className="flex bg-slate-200 dark:bg-slate-700 p-1 rounded-xl">
+                    <button onClick={() => setLang('tr')} className={cn("px-3 py-1 text-[10px] font-black rounded-lg transition-all", lang === 'tr' ? "bg-white dark:bg-slate-600 shadow-sm text-blue-600" : "text-slate-400")}>TR</button>
+                    <button onClick={() => setLang('en')} className={cn("px-3 py-1 text-[10px] font-black rounded-lg transition-all", lang === 'en' ? "bg-white dark:bg-slate-600 shadow-sm text-blue-600" : "text-slate-400")}>EN</button>
+                  </div>
+                </div>
+                
+                <button 
+                  onClick={() => setTheme(theme === 'light' ? 'dark' : 'light')}
+                  className="w-full h-12 rounded-2xl bg-slate-50 hover:bg-slate-100 dark:bg-slate-800/80 text-slate-700 dark:text-slate-300 font-black text-xs uppercase tracking-widest flex items-center justify-center gap-3 border border-slate-100 dark:border-slate-800"
+                >
+                  {theme === 'light' ? (
+                    <>
+                      <Moon size={16} />
+                      <span>{lang === 'tr' ? 'GECE MODU' : 'DARK MODE'}</span>
+                    </>
+                  ) : (
+                    <>
+                      <Sun size={16} />
+                      <span>{lang === 'tr' ? 'GÜNDÜZ MODU' : 'LIGHT MODE'}</span>
+                    </>
+                  )}
+                </button>
+              </div>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* Simulated Waveform Audio Player */}
+      <AnimatePresence>
+        {activeAudioVenue && (
+          <motion.div 
+            initial={{ y: 50, opacity: 0, scale: 0.95 }}
+            animate={{ y: 0, opacity: 1, scale: 1 }}
+            exit={{ y: 50, opacity: 0, scale: 0.95 }}
+            className="fixed bottom-[110px] lg:bottom-10 right-4 lg:right-10 z-[3200] w-[92%] sm:w-[380px] bg-slate-950/95 text-white p-5 rounded-3xl shadow-[0_30px_60px_rgba(0,0,0,0.5)] border border-slate-800/80 backdrop-blur-2xl"
+          >
+            <div className="flex items-center justify-between pb-3 border-b border-slate-800/80 mb-3.5">
+              <div className="flex items-center gap-2.5">
+                <div className="w-8 h-8 rounded-full bg-emerald-500/20 text-emerald-400 flex items-center justify-center animate-pulse">
+                  <Headphones size={13} className="text-emerald-400 shrink-0" />
+                </div>
+                <div className="text-left">
+                  <h4 className="text-[10px] font-black tracking-widest text-emerald-400 uppercase">
+                    {lang === 'tr' ? 'SESLİ REHBER AKTİF' : 'AUDIO TOUR ACTIVE'}
+                  </h4>
+                  <div className="text-xs font-bold leading-tight line-clamp-1 max-w-[180px]">
+                    {lang === 'tr' ? activeAudioVenue.isim : (activeAudioVenue.isim_en || activeAudioVenue.isim)}
+                  </div>
+                </div>
+              </div>
+              <button 
+                onClick={() => {
+                  setIsAudioPlaying(false);
+                  setActiveAudioVenue(null);
+                }}
+                className="p-1.5 px-3 rounded-xl bg-slate-800 text-slate-400 hover:text-red-500 transition-all text-[9px] font-black uppercase tracking-wider active:scale-95"
+              >
+                {lang === 'tr' ? 'AKTARIMI KAPAT' : 'CLOSE AUDIO'}
+              </button>
+            </div>
+
+            {/* Subtitle stream narration container */}
+            <div className="bg-slate-900/60 p-4 rounded-2xl border border-slate-800/30 mb-4 h-24 overflow-y-auto custom-scrollbar flex items-center justify-center">
+              <p className="text-[11px] leading-relaxed text-slate-300 font-medium italic text-center w-full select-none">
+                "{getVenueNarration(activeAudioVenue)}"
+              </p>
+            </div>
+
+            {/* Simulated narration progress meter */}
+            <div className="space-y-3">
+              <div className="flex items-center justify-between text-[9px] font-mono text-slate-500">
+                <span>00:{(Math.floor(audioProgress * 0.3)).toString().padStart(2, '0')}</span>
+                <span>00:30</span>
+              </div>
+              
+              <div className="h-1.5 w-full bg-slate-800 rounded-full overflow-hidden relative cursor-pointer" onClick={(e) => {
+                const rect = e.currentTarget.getBoundingClientRect();
+                const clickX = e.clientX - rect.left;
+                const percentage = Math.round((clickX / rect.width) * 100);
+                setAudioProgress(percentage);
+              }}>
+                <div 
+                  className="h-full bg-gradient-to-r from-emerald-400 to-teal-500 rounded-full transition-all duration-300"
+                  style={{ width: `${audioProgress}%` }}
+                />
+              </div>
+
+              {/* Media Controls */}
+              <div className="flex items-center justify-between pt-1">
+                <div className="flex items-center gap-1">
+                  {[1, 2, 3, 4, 5].map((bar) => (
+                    <motion.div 
+                      key={bar}
+                      animate={isAudioPlaying ? { height: [4, 16, 4] } : { height: 4 }}
+                      transition={{ repeat: Infinity, duration: 0.6, delay: bar * 0.1 }}
+                      className="w-1 bg-emerald-400 rounded-full"
+                      style={{ height: 4 }}
+                    />
+                  ))}
+                </div>
+
+                <div className="flex items-center gap-3">
+                  <button 
+                    onClick={() => {
+                      setAudioProgress(0);
+                      setIsAudioPlaying(true);
+                    }}
+                    className="w-8 h-8 rounded-full bg-slate-800 text-slate-300 hover:text-white flex items-center justify-center text-xs active:scale-95 transition-transform"
+                    title={lang === 'tr' ? 'Baştan Al' : 'Restart'}
+                  >
+                    <i className="fa-solid fa-backward-step"></i>
+                  </button>
+                  <button 
+                    onClick={() => setIsAudioPlaying(!isAudioPlaying)}
+                    className="w-11 h-11 rounded-full bg-emerald-500 text-slate-950 hover:bg-emerald-400 flex items-center justify-center text-sm shadow-xl hover:scale-105 active:scale-95 transition-all"
+                  >
+                    {isAudioPlaying ? <i className="fa-solid fa-pause"></i> : <i className="fa-solid fa-play ml-0.5"></i>}
+                  </button>
+                </div>
+
+                <div className="text-[10px] text-slate-500 font-mono">
+                  {isAudioPlaying ? (lang === 'tr' ? 'OYNATILIYOR' : 'PLAYING') : (lang === 'tr' ? 'DURDURULDU' : 'PAUSED')}
+                </div>
+              </div>
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* Unified Mobile Bottom Navigation Floating Action Bar */}
+      {activeScreen === 'app' && !isSidebarOpen && !isMobileNavOpen && (
+        <div className="lg:hidden fixed bottom-6 left-1/2 -translate-x-1/2 z-[1150] w-[92%] max-w-sm">
+          <motion.div 
+            initial={{ y: 50, opacity: 0 }}
+            animate={{ y: 0, opacity: 1 }}
+            className="bg-slate-950/95 dark:bg-slate-950/95 backdrop-blur-3xl px-6 py-3 rounded-3xl shadow-[0_20px_50px_rgba(0,0,0,0.5)] border border-slate-800 flex items-center justify-around gap-2"
+          >
+            {/* Route Planner Button */}
+            <button
+              onClick={() => {
+                setIsSidebarOpen(true);
+                setIsRightSidebarOpen(false);
+              }}
+              className="flex-1 flex flex-col items-center justify-center text-slate-400 hover:text-blue-400 transition-all active:scale-95 py-1"
+            >
+              <div className="w-9 h-9 rounded-full bg-blue-500/10 text-blue-400 flex items-center justify-center mb-1">
+                <Calendar size={16} />
+              </div>
+              <span className="text-[9px] font-black uppercase tracking-widest text-slate-300">
+                {lang === 'tr' ? 'PLANLAYICI' : 'PLANNER'}
+              </span>
+            </button>
+
+            {/* Dynamic Route View Button (Only if route loaded) */}
+            {routeData.length > 0 && (
+              <>
+                <div className="w-px h-8 bg-slate-800" />
+                
+                <button
+                  onClick={() => {
+                    const nextState = !isRightSidebarOpen;
+                    setIsRightSidebarOpen(nextState);
+                    if (nextState) {
+                      setIsSidebarOpen(false);
+                    }
+                  }}
+                  className="flex-1 flex flex-col items-center justify-center text-slate-400 hover:text-emerald-400 transition-all active:scale-95 py-1 relative"
+                >
+                  <div className="w-9 h-9 rounded-full bg-emerald-500/10 text-emerald-400 flex items-center justify-center mb-1">
+                    <i className="fa-solid fa-route text-xs" />
+                    <div className="absolute top-1.5 right-6 flex h-1.5 w-1.5">
+                      <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
+                      <span className="relative inline-flex rounded-full h-1.5 w-1.5 bg-emerald-500"></span>
+                    </div>
+                  </div>
+                  <span className="text-[9px] font-black uppercase tracking-widest text-[#10b981]">
+                    {lang === 'tr' ? 'PLANI GÖR' : 'VIEW PLAN'}
+                  </span>
+                </button>
+              </>
+            )}
+
+            {/* Explore / Clear Route button */}
+            <div className="w-px h-8 bg-slate-800" />
+            
+            <button
+              onClick={() => {
+                clearRoute();
+                setIsExplorerMode(true);
+                setIsSidebarOpen(false);
+                setIsRightSidebarOpen(false);
+                setTimeout(() => {
+                  const mapEl = document.getElementById('map-container');
+                  if (mapEl) mapEl.scrollIntoView({ behavior: 'smooth' });
+                }, 100);
+              }}
+              className="flex-1 flex flex-col items-center justify-center text-slate-400 hover:text-amber-400 transition-all active:scale-95 py-1"
+            >
+              <div className="w-9 h-9 rounded-full bg-amber-500/10 text-amber-400 flex items-center justify-center mb-1">
+                <i className="fa-solid fa-map-location-dot text-xs" />
+              </div>
+              <span className="text-[9px] font-black uppercase tracking-widest text-[#f59e0b]">
+                {lang === 'tr' ? 'HARİTA' : 'EXPLORE'}
+              </span>
+            </button>
+          </motion.div>
+        </div>
+      )}
+
+      {/* Dynamic Toast custom feedback banner */}
+      <AnimatePresence>
+        {toastMessage && (
+          <motion.div
+            initial={{ opacity: 0, y: 50, scale: 0.95 }}
+            animate={{ opacity: 1, y: 0, scale: 1 }}
+            exit={{ opacity: 0, y: 20, scale: 0.95 }}
+            className="fixed bottom-6 left-6 md:bottom-10 md:left-10 z-[8000] bg-slate-900/95 dark:bg-slate-950/95 backdrop-blur-md text-white px-5 py-3.5 rounded-2xl shadow-[0_20px_50px_rgba(0,0,0,0.3)] border border-slate-800/80 flex items-center gap-3 text-xs font-bold uppercase tracking-wider"
+          >
+            <div className="w-5 h-5 rounded-full bg-blue-500/10 text-blue-400 border border-blue-500/20 flex items-center justify-center">
+              <i className="fa-solid fa-check text-[9px]" />
+            </div>
+            <span>{toastMessage}</span>
           </motion.div>
         )}
       </AnimatePresence>
