@@ -320,12 +320,22 @@ export default function App() {
   const [routeData, setRouteData] = useState<{ day: number, venues: Venue[] }[]>([]);
   const [selectedVenue, setSelectedVenue] = useState<Venue | null>(null);
   const [visitedVenues, setVisitedVenues] = useState<string[]>([]);
-  const [isSidebarOpen, setIsSidebarOpen] = useState(true);
+  const [isSidebarOpen, setIsSidebarOpen] = useState(() => {
+    if (typeof window !== 'undefined') {
+      return window.innerWidth >= 1024;
+    }
+    return true;
+  });
   const [isGenerating, setIsGenerating] = useState(false);
   const [isExplorerMode, setIsExplorerMode] = useState(false);
   const [isViewingRoute, setIsViewingRoute] = useState(false);
   const [visibleDay, setVisibleDay] = useState<number | null>(null);
-  const [isRightSidebarOpen, setIsRightSidebarOpen] = useState(true);
+  const [isRightSidebarOpen, setIsRightSidebarOpen] = useState(() => {
+    if (typeof window !== 'undefined') {
+      return window.innerWidth >= 1024;
+    }
+    return true;
+  });
   const [infoModalType, setInfoModalType] = useState<'about' | 'how-it-works' | null>(null);
   const [lang, setLang] = useState<'tr' | 'en'>('tr');
   const [theme, setTheme] = useState<'light' | 'dark'>('light');
