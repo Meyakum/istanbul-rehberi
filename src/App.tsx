@@ -32,48 +32,121 @@ import L from 'leaflet';
 import { ISTANBUL_DATA, Venue, Hotel, getDistance, cn, TRANSLATIONS, ALL_DISTRICTS, DISTRICT_COORDS, DEFAULT_IMAGE } from './constants';
 
 const categoryMapping: { [key: string]: { icon: string, color: string } } = {
+  // Worship & Faith
   "Cami": { icon: "fa-mosque", color: "#16a34a" },
   "Türbe": { icon: "fa-mosque", color: "#16a34a" },
   "İnanç": { icon: "fa-mosque", color: "#16a34a" },
+  "İbadet": { icon: "fa-mosque", color: "#16a34a" },
+  "Kilise": { icon: "fa-mosque", color: "#16a34a" },
+  "Sinagog": { icon: "fa-mosque", color: "#16a34a" },
+  "Worship": { icon: "fa-mosque", color: "#16a34a" },
+  "Faith": { icon: "fa-mosque", color: "#16a34a" },
+  // History & Museum
   "Saray": { icon: "fa-landmark", color: "#9333ea" },
   "Müze": { icon: "fa-landmark", color: "#9333ea" },
   "Kasır": { icon: "fa-landmark", color: "#9333ea" },
   "Tarihi Yapı": { icon: "fa-landmark", color: "#9333ea" },
+  "Tarih": { icon: "fa-landmark", color: "#9333ea" },
+  "Museum": { icon: "fa-landmark", color: "#9333ea" },
+  "History": { icon: "fa-landmark", color: "#9333ea" },
+  // Nature & Park
   "Park": { icon: "fa-tree", color: "#22c55e" },
   "Doğa": { icon: "fa-tree", color: "#22c55e" },
   "Koru": { icon: "fa-tree", color: "#22c55e" },
   "Orman": { icon: "fa-tree", color: "#22c55e" },
   "Bahçe": { icon: "fa-tree", color: "#22c55e" },
+  "Nature": { icon: "fa-tree", color: "#22c55e" },
+  // Views & Scenery
   "Manzara": { icon: "fa-eye", color: "#3b82f6" },
   "Kule": { icon: "fa-eye", color: "#3b82f6" },
   "Seyir Terası": { icon: "fa-eye", color: "#3b82f6" },
+  "Seyir": { icon: "fa-eye", color: "#3b82f6" },
+  "Views": { icon: "fa-eye", color: "#3b82f6" },
+  "Scenery": { icon: "fa-eye", color: "#3b82f6" },
+  // Shopping & Bazaar
   "Çarşı": { icon: "fa-shopping-bag", color: "#db2777" },
   "Alışveriş": { icon: "fa-shopping-bag", color: "#db2777" },
   "AVM": { icon: "fa-shopping-bag", color: "#db2777" },
   "Cadde": { icon: "fa-shopping-bag", color: "#db2777" },
+  "Shopping": { icon: "fa-shopping-bag", color: "#db2777" },
+  "Bazaar": { icon: "fa-shopping-bag", color: "#db2777" },
+  "Han": { icon: "fa-shopping-bag", color: "#db2777" },
+  "Bazar": { icon: "fa-shopping-bag", color: "#db2777" },
+  "Arasta": { icon: "fa-shopping-bag", color: "#db2777" },
+  "Mağaza": { icon: "fa-shopping-bag", color: "#db2777" },
+  "Dükkan": { icon: "fa-shopping-bag", color: "#db2777" },
+  "Pazar": { icon: "fa-shopping-bag", color: "#db2777" },
+  "Market": { icon: "fa-shopping-bag", color: "#db2777" },
+  "Store": { icon: "fa-shopping-bag", color: "#db2777" },
+  "Shop": { icon: "fa-shopping-bag", color: "#db2777" },
+  "Butik": { icon: "fa-shopping-bag", color: "#db2777" },
+  "Boutique": { icon: "fa-shopping-bag", color: "#db2777" },
+  "Mall": { icon: "fa-shopping-bag", color: "#db2777" },
+  // Coast & Island
   "Sahil": { icon: "fa-water", color: "#06b6d4" },
   "Ada": { icon: "fa-water", color: "#06b6d4" },
   "Deniz": { icon: "fa-water", color: "#06b6d4" },
   "Akvaryum": { icon: "fa-water", color: "#06b6d4" },
+  "Coast": { icon: "fa-water", color: "#06b6d4" },
+  "Island": { icon: "fa-water", color: "#06b6d4" },
+  // Architecture & Transport (Mimari & Ulaşım)
   "Köprü": { icon: "fa-bridge", color: "#4b5563" },
   "Gar": { icon: "fa-bridge", color: "#4b5563" },
   "İstasyon": { icon: "fa-bridge", color: "#4b5563" },
+  "Mimari": { icon: "fa-bridge", color: "#4b5563" },
+  "Ulaşım": { icon: "fa-bridge", color: "#4b5563" },
+  "Architecture": { icon: "fa-bridge", color: "#4b5563" },
+  "Transport": { icon: "fa-bridge", color: "#4b5563" },
+  "Metro": { icon: "fa-bridge", color: "#4b5563" },
+  "Tramvay": { icon: "fa-bridge", color: "#4b5563" },
+  "Tünel": { icon: "fa-bridge", color: "#4b5563" },
+  "İskele": { icon: "fa-bridge", color: "#4b5563" },
+  "Liman": { icon: "fa-bridge", color: "#4b5563" },
+  "Ferry": { icon: "fa-bridge", color: "#4b5563" },
+  "Pier": { icon: "fa-bridge", color: "#4b5563" },
+  "Port": { icon: "fa-bridge", color: "#4b5563" },
+  "Havalimanı": { icon: "fa-bridge", color: "#4b5563" },
+  "Havaalanı": { icon: "fa-bridge", color: "#4b5563" },
+  "Airport": { icon: "fa-bridge", color: "#4b5563" },
+  "Terminal": { icon: "fa-bridge", color: "#4b5563" },
+  "Yol": { icon: "fa-bridge", color: "#4b5563" },
+  "Geçit": { icon: "fa-bridge", color: "#4b5563" },
+  "Viyadük": { icon: "fa-bridge", color: "#4b5563" },
+  "Füniküler": { icon: "fa-bridge", color: "#4b5563" },
+  "Teleferik": { icon: "fa-bridge", color: "#4b5563" },
+  "Cable car": { icon: "fa-bridge", color: "#4b5563" },
+  "Funicular": { icon: "fa-bridge", color: "#4b5563" },
+  // Fortress & Defense
   "Kale": { icon: "fa-fort-awesome", color: "#b45309" },
   "Hisar": { icon: "fa-fort-awesome", color: "#b45309" },
   "Sarnıç": { icon: "fa-fort-awesome", color: "#b45309" },
+  "Fortress": { icon: "fa-fort-awesome", color: "#b45309" },
+  "Defense": { icon: "fa-fort-awesome", color: "#b45309" },
+  "Burç": { icon: "fa-fort-awesome", color: "#b45309" },
+  "Sur": { icon: "fa-fort-awesome", color: "#b45309" },
+  "Surlar": { icon: "fa-fort-awesome", color: "#b45309" },
+  // Square & Life
   "Semt": { icon: "fa-map-signs", color: "#d97706" },
   "Köy": { icon: "fa-map-signs", color: "#d97706" },
   "Meydan": { icon: "fa-map-signs", color: "#d97706" },
+  "Square": { icon: "fa-map-signs", color: "#d97706" },
+  "Life": { icon: "fa-map-signs", color: "#d97706" },
+  "Sokak": { icon: "fa-map-signs", color: "#d97706" },
+  // Entertainment & Art
   "Eğlence": { icon: "fa-ticket", color: "#ef4444" },
   "Tema Park": { icon: "fa-ticket", color: "#ef4444" },
-  "Sanat Merkezi": { icon: "fa-ticket", color: "#ef4444" }
+  "Sanat Merkezi": { icon: "fa-ticket", color: "#ef4444" },
+  "Entertainment": { icon: "fa-ticket", color: "#ef4444" },
+  "Art": { icon: "fa-ticket", color: "#ef4444" },
+  "Tiyatro": { icon: "fa-ticket", color: "#ef4444" },
+  "Sinema": { icon: "fa-ticket", color: "#ef4444" }
 };
 
-const createCategoryIcon = (tur: string, label?: string, customColor?: string, isVisited?: boolean) => {
+const createCategoryIcon = (tur: string, label?: string, customColor?: string, isVisited?: boolean, tur_en?: string) => {
   let matched = { icon: "fa-map-marker-alt", color: "#3b82f6" };
   
   for (const key in categoryMapping) {
-    if (tur.toLowerCase().includes(key.toLowerCase())) {
+    if (tur.toLowerCase().includes(key.toLowerCase()) || (tur_en && tur_en.toLowerCase().includes(key.toLowerCase()))) {
       matched = { ...categoryMapping[key] };
       break;
     }
@@ -495,28 +568,50 @@ export default function App() {
       }
 
       // Smart filtering priority arrays to prioritize the absolute best premium/native free voices
-      const allVoices = window.speechSynthesis.getVoices();
-      let selectedVoice: SpeechSynthesisVoice | null = null;
-
       if (lang === 'tr') {
-        selectedVoice = 
-          // 1. Premium Microsoft Edge Online Natural Female Voices (extremely organic/human)
-          allVoices.find(v => v.lang.includes('TR') && v.name.includes('Online') && (v.name.includes('Dilara') || v.name.includes('Yasmin') || v.name.includes('Seda'))) ||
-          allVoices.find(v => v.lang.includes('TR') && v.name.includes('Online') && v.name.includes('Tolga')) || // fallback online male
-          // 2. High Quality Apple macOS/iOS Native Female Voices (Yelda is exceptionally premium, Seda is great)
-          allVoices.find(v => v.lang.startsWith('tr') && (v.name.includes('Yelda') || v.name.includes('Seda') || v.name.includes('Dilara'))) ||
-          // 3. Local Natural/Premium Female Voices
-          allVoices.find(v => v.lang.startsWith('tr') && v.name.includes('Natural') && (v.name.includes('Dilara') || v.name.includes('Yasmin') || v.name.includes('Seda') || v.name.includes('Hazel'))) ||
-          allVoices.find(v => v.lang.startsWith('tr') && v.name.includes('Natural')) ||
-          // 4. Microsoft Windows Standard Female Turkish Voice (Hazel/Dilara/Yasmin is much better than Tolga/Cem)
-          allVoices.find(v => v.lang.startsWith('tr') && v.name.includes('Hazel')) ||
-          allVoices.find(v => v.lang.startsWith('tr') && (v.name.includes('Dilara') || v.name.includes('Yasmin'))) ||
-          // 5. Google / Desktop Female or standard voices (excluding highly robotic Tolga/Cem where possible)
-          allVoices.find(v => v.lang.startsWith('tr') && v.name.includes('Google') && !v.name.includes('Tolga') && !v.name.includes('Cem')) ||
-          allVoices.find(v => v.lang.startsWith('tr') && !v.name.includes('Tolga') && !v.name.includes('Cem')) ||
-          allVoices.find(v => v.lang.startsWith('tr'));
+        const getTurkishFemaleVoice = () => {
+          const voicesList = typeof window !== 'undefined' && 'speechSynthesis' in window ? window.speechSynthesis.getVoices() : [];
+          if (!voicesList || voicesList.length === 0) return null;
+          
+          const trVoices = voicesList.filter(v => v.lang.toLowerCase().startsWith('tr') || v.lang.toLowerCase().includes('tr'));
+          
+          // STRICT PRIORITIZATION MATRIX FOR FEMALE LOCALES:
+          // Priority 1: Microsoft Natural/Online Female Voices (Edge/Windows)
+          let selected = trVoices.find(v => v.name.toLowerCase().includes('seda') || v.name.toLowerCase().includes('natural') || v.name.toLowerCase().includes('dilara') || v.name.toLowerCase().includes('yasmin') || v.name.toLowerCase().includes('hazel'));
+          if (selected) return selected;
+          
+          // Priority 2: Apple Premium Female Voice (Safari/macOS/iOS)
+          selected = trVoices.find(v => v.name.toLowerCase().includes('yelda'));
+          if (selected) return selected;
+          
+          // Priority 3: Google/Chrome High Quality Female Indicators
+          selected = trVoices.find(v => (v.name.toLowerCase().includes('google') || v.name.toLowerCase().includes('chrome')) && !v.name.toLowerCase().includes('cem') && !v.name.toLowerCase().includes('tolga'));
+          if (selected) return selected;
+          
+          // Priority 4: Explicit female tag check
+          selected = trVoices.find(v => v.name.toLowerCase().includes('female'));
+          if (selected) return selected;
+          
+          // Fallback: Default to first available TR voice if no specific female string matches
+          return trVoices[0] || null;
+        };
+
+        if (typeof window !== 'undefined' && window.speechSynthesis) {
+          if (window.speechSynthesis.onvoiceschanged !== undefined) {
+            window.speechSynthesis.onvoiceschanged = () => {
+              const voice = getTurkishFemaleVoice();
+              if (voice) utterance.voice = voice;
+            };
+          }
+          // Run immediately for browsers that load synchronously (Safari/Firefox)
+          const voice = getTurkishFemaleVoice();
+          if (voice) {
+            utterance.voice = voice;
+          }
+        }
       } else {
-        selectedVoice = 
+        const allVoices = window.speechSynthesis.getVoices();
+        const selectedVoice = 
           allVoices.find(v => v.lang.startsWith('en') && v.name.includes('Natural')) ||
           allVoices.find(v => v.lang.startsWith('en') && v.name.includes('Google US English')) ||
           allVoices.find(v => v.lang.startsWith('en') && v.name.includes('Aria')) ||
@@ -524,10 +619,9 @@ export default function App() {
           allVoices.find(v => v.lang.startsWith('en') && v.name.includes('Premium')) ||
           allVoices.find(v => v.lang.startsWith('en') && v.name.includes('Google')) ||
           allVoices.find(v => v.lang.startsWith('en'));
-      }
-
-      if (selectedVoice) {
-        utterance.voice = selectedVoice;
+        if (selectedVoice) {
+          utterance.voice = selectedVoice;
+        }
       }
 
       utterance.onboundary = (event) => {
@@ -1059,7 +1153,10 @@ export default function App() {
       // Find venue's icon
       let venueIcon = "fa-map-marker-alt";
       for (const key in categoryMapping) {
-        if (v.tur.toLowerCase().includes(key.toLowerCase())) {
+        if (
+          v.tur.toLowerCase().includes(key.toLowerCase()) ||
+          (v.tur_en && v.tur_en.toLowerCase().includes(key.toLowerCase()))
+        ) {
           venueIcon = categoryMapping[key].icon;
           break;
         }
@@ -2102,7 +2199,10 @@ export default function App() {
                       // Find venue's icon
                       let venueIcon = "fa-map-marker-alt";
                       for (const key in categoryMapping) {
-                        if (v.tur.toLowerCase().includes(key.toLowerCase())) {
+                        if (
+                          v.tur.toLowerCase().includes(key.toLowerCase()) ||
+                          (v.tur_en && v.tur_en.toLowerCase().includes(key.toLowerCase()))
+                        ) {
                           venueIcon = categoryMapping[key].icon;
                           break;
                         }
@@ -2114,7 +2214,7 @@ export default function App() {
                       <Marker 
                         key={v.isim}
                         position={[v.koordinat.enlem, v.koordinat.boylam]}
-                        icon={createCategoryIcon(v.tur)}
+                        icon={createCategoryIcon(v.tur, undefined, undefined, false, v.tur_en)}
                         eventHandlers={{ click: () => setSelectedVenue(v) }}
                       />
                     ))}
@@ -2189,7 +2289,7 @@ export default function App() {
                             <Marker 
                               key={`${dIdx}-${vIdx}`}
                               position={[v.koordinat.enlem, v.koordinat.boylam]}
-                              icon={createCategoryIcon(v.tur, `${dIdx + 1}. ${t.day} - ${vIdx + 1}`, dayColors[dIdx % dayColors.length], visitedVenues.includes(v.isim))}
+                              icon={createCategoryIcon(v.tur, `${dIdx + 1}. ${t.day} - ${vIdx + 1}`, dayColors[dIdx % dayColors.length], visitedVenues.includes(v.isim), v.tur_en)}
                               zIndexOffset={2000}
                               opacity={visitedVenues.includes(v.isim) ? 0.3 : 1.0}
                               eventHandlers={{
@@ -3125,7 +3225,7 @@ export default function App() {
             whileDrag={{ scale: 1.02 }}
             className={cn(
               "fixed right-4 lg:right-10 z-[3200] w-[92%] sm:w-[380px] bg-slate-950/95 text-white p-5 rounded-3xl shadow-[0_30px_60px_rgba(0,0,0,0.6)] border border-slate-800/80 backdrop-blur-2xl cursor-grab active:cursor-grabbing select-none",
-              (isSidebarOpen || isRightSidebarOpen)
+              isGenerating
                 ? "bottom-4 lg:bottom-10"
                 : "bottom-[110px] lg:bottom-10"
             )}
@@ -3240,7 +3340,7 @@ export default function App() {
       {activeScreen === 'app' && !isMobileNavOpen && (
         <div className={cn(
           "lg:hidden fixed bottom-6 left-1/2 -translate-x-1/2 z-[3100] w-[92%] max-w-sm transition-all duration-300",
-          (isSidebarOpen || isRightSidebarOpen) ? "opacity-0 pointer-events-none translate-y-10 scale-95" : "opacity-100 translate-y-0 scale-100"
+          isGenerating ? "opacity-0 pointer-events-none translate-y-10 scale-95" : "opacity-100 translate-y-0 scale-100"
         )}>
           <motion.div 
             initial={{ y: 50, opacity: 0 }}
