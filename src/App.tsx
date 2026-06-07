@@ -24,7 +24,8 @@ import {
   Moon,
   Headphones,
   Share,
-  Download
+  Download,
+  Check
 } from 'lucide-react';
 import { MapContainer, TileLayer, Marker, Popup, Polyline, useMap } from 'react-leaflet';
 import L from 'leaflet';
@@ -309,6 +310,7 @@ export default function App() {
   const [preferences, setPreferences] = useState<string[]>([]);
   const [routeData, setRouteData] = useState<{ day: number, venues: Venue[] }[]>([]);
   const [selectedVenue, setSelectedVenue] = useState<Venue | null>(null);
+  const [visitedVenues, setVisitedVenues] = useState<string[]>([]);
   const [isSidebarOpen, setIsSidebarOpen] = useState(true);
   const [isGenerating, setIsGenerating] = useState(false);
   const [isExplorerMode, setIsExplorerMode] = useState(false);
@@ -733,11 +735,74 @@ export default function App() {
       if (hasRouteParams) {
         setActiveScreen('app');
         setShouldAutoDraw(true);
+      } else {
+        // If no URL params, restore route from localStorage (Yerele Kaydetme)
+        try {
+          const stored = localStorage.getItem('active_istanbul_route');
+          if (stored) {
+            const data = JSON.parse(stored);
+            if (data && Array.isArray(data.routeData) && data.routeData.length > 0) {
+              setRouteData(data.routeData);
+              if (data.activeTab) setActiveTab(data.activeTab);
+              if (data.selectedHotel) setSelectedHotel(data.selectedHotel);
+              if (data.selectedDistrict) setSelectedDistrict(data.selectedDistrict);
+              if (data.duration) setDuration(data.duration);
+              if (data.pace) setPace(data.pace);
+              if (data.preferences) setPreferences(data.preferences);
+              if (data.weatherOptimized !== undefined) setWeatherOptimized(data.weatherOptimized);
+              if (data.dailyWeather) setDailyWeather(data.dailyWeather);
+              setActiveScreen('app');
+              setIsViewingRoute(true);
+              setIsRightSidebarOpen(true);
+              setIsSidebarOpen(false);
+            }
+          }
+        } catch (e) {
+          console.error("Error loading persisted route from localStorage:", e);
+        }
       }
     } catch (e) {
       console.warn("Error parsing URL params:", e);
     }
   }, []);
+
+  // Persistent state for visited venues
+  useEffect(() => {
+    try {
+      const storedVisited = localStorage.getItem('visited_istanbul_venues');
+      if (storedVisited) {
+        setVisitedVenues(JSON.parse(storedVisited));
+      }
+    } catch (e) {
+      console.error("Error reading visited_istanbul_venues from localStorage:", e);
+    }
+  }, []);
+
+  useEffect(() => {
+    if (visitedVenues.length > 0) {
+      localStorage.setItem('visited_istanbul_venues', JSON.stringify(visitedVenues));
+    } else {
+      localStorage.removeItem('visited_istanbul_venues');
+    }
+  }, [visitedVenues]);
+
+  // Auto-save route data and settings to localStorage when they change
+  useEffect(() => {
+    if (routeData && routeData.length > 0) {
+      const dataToStore = {
+        routeData,
+        activeTab,
+        selectedHotel,
+        selectedDistrict,
+        duration,
+        pace,
+        preferences,
+        weatherOptimized,
+        dailyWeather
+      };
+      localStorage.setItem('active_istanbul_route', JSON.stringify(dataToStore));
+    }
+  }, [routeData, activeTab, selectedHotel, selectedDistrict, duration, pace, preferences, weatherOptimized, dailyWeather]);
 
   // Monitor auto draw trigger
   useEffect(() => {
@@ -924,6 +989,9 @@ export default function App() {
     setWeatherOptimized(false);
     setSelectedVenue(null);
     setMapCenterState({ center: [41.015, 28.97], zoom: 13 });
+    localStorage.removeItem('active_istanbul_route');
+    localStorage.removeItem('visited_istanbul_venues');
+    setVisitedVenues([]);
   };
 
   const handleStartFromLocation = () => {
@@ -1297,7 +1365,7 @@ export default function App() {
             key="app"
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
-            className="flex flex-col h-screen"
+            className="flex flex-col h-[100dvh]"
           >
             {/* Header */}
             {(!isExplorerMode || true) && (
@@ -1329,18 +1397,57 @@ export default function App() {
                 </div>
 
                 <div className="flex items-center gap-1.5 sm:gap-4 shrink-0">
-                  <div className="flex bg-slate-100 dark:bg-slate-800 p-0.5 min-[375px]:p-1 rounded-lg min-[375px]:rounded-xl">
-                    <button onClick={() => setLang('tr')} className={cn("px-1.5 min-[360px]:px-2.5 min-[375px]:px-3 py-1 text-[9px] min-[360px]:text-[10px] font-black rounded-md min-[375px]:rounded-lg transition-all", lang === 'tr' ? "bg-white dark:bg-slate-600 shadow-sm text-blue-600" : "text-slate-400 hover:text-slate-600 dark:hover:text-slate-300")}>TR</button>
-                    <button onClick={() => setLang('en')} className={cn("px-1.5 min-[360px]:px-2.5 min-[375px]:px-3 py-1 text-[9px] min-[360px]:text-[10px] font-black rounded-md min-[375px]:rounded-lg transition-all", lang === 'en' ? "bg-white dark:bg-slate-600 shadow-sm text-blue-600" : "text-slate-400 hover:text-slate-600 dark:hover:text-slate-300")}>EN</button>
+                  <div className={cn(
+                    "flex p-0.5 min-[375px]:p-1 rounded-lg min-[375px]:rounded-xl border transition-all duration-300",
+                    theme === 'dark' 
+                      ? "bg-slate-800 border-slate-700/60" 
+                      : "bg-slate-100 border-slate-200/50"
+                  )}>
+                    <button 
+                      onClick={() => setLang('tr')} 
+                      className={cn(
+                        "px-1.5 min-[360px]:px-2.5 min-[375px]:px-3 py-1 text-[9px] min-[360px]:text-[10px] font-black rounded-md min-[375px]:rounded-lg transition-all active:scale-95", 
+                        lang === 'tr' 
+                          ? (theme === 'dark' 
+                              ? "bg-slate-700 text-white shadow-sm border border-slate-600" 
+                              : "bg-white text-blue-600 shadow-sm border border-slate-200/30") 
+                          : "text-slate-400 hover:text-slate-600 dark:text-slate-400 dark:hover:text-slate-200"
+                      )}
+                    >
+                      TR
+                    </button>
+                    <button 
+                      onClick={() => setLang('en')} 
+                      className={cn(
+                        "px-1.5 min-[360px]:px-2.5 min-[375px]:px-3 py-1 text-[9px] min-[360px]:text-[10px] font-black rounded-md min-[375px]:rounded-lg transition-all active:scale-95", 
+                        lang === 'en' 
+                          ? (theme === 'dark' 
+                              ? "bg-slate-700 text-white shadow-sm border border-slate-600" 
+                              : "bg-white text-blue-600 shadow-sm border border-slate-200/30") 
+                          : "text-slate-400 hover:text-slate-600 dark:text-slate-400 dark:hover:text-slate-200"
+                      )}
+                    >
+                      EN
+                    </button>
                   </div>
                   <button 
                     onClick={() => setTheme(theme === 'light' ? 'dark' : 'light')}
-                    className="hidden lg:flex p-3 bg-slate-100 dark:bg-slate-800 rounded-xl text-slate-500 hover:text-blue-600 transition-all"
+                    className={cn(
+                      "hidden lg:flex p-3 rounded-xl border transition-all duration-300 active:scale-95 shadow-sm",
+                      theme === 'dark'
+                        ? "bg-slate-800 border-slate-700 text-slate-300 hover:text-blue-400 hover:bg-slate-700"
+                        : "bg-white border-slate-200 text-slate-600 hover:text-blue-600 hover:bg-slate-50 hover:shadow-md"
+                    )}
                   >
                     {theme === 'light' ? <Moon size={20} /> : <Sun size={20} />}
                   </button>
                   <button 
-                    className="lg:hidden p-2 min-[375px]:p-2.5 bg-slate-100 dark:bg-slate-800 rounded-xl text-slate-800 dark:text-white active:scale-95 transition-transform shrink-0" 
+                    className={cn(
+                      "lg:hidden p-2 min-[375px]:p-2.5 rounded-xl border active:scale-95 transition-all shrink-0 shadow-sm",
+                      theme === 'dark'
+                        ? "bg-slate-800 border-slate-700 text-white hover:bg-slate-700"
+                        : "bg-white border-slate-200 text-slate-800 hover:bg-slate-50 hover:shadow-md"
+                    )}
                     onClick={() => setIsMobileNavOpen(true)}
                   >
                     <Menu size={20} />
@@ -1353,12 +1460,12 @@ export default function App() {
               {/* Sidebar */}
               {!isExplorerMode && (
                 <aside className={cn(
-                  "fixed inset-0 lg:relative lg:inset-auto w-full lg:w-[420px] border-r flex flex-col z-[1200] lg:z-40 transition-all duration-500 ease-out shadow-2xl lg:shadow-none",
+                  "fixed top-16 bottom-0 left-0 right-0 lg:relative lg:inset-auto h-[calc(100dvh-4rem)] lg:h-auto w-full lg:w-[420px] border-r flex flex-col z-[1200] lg:z-40 transition-all duration-500 ease-out shadow-2xl lg:shadow-none",
                   theme === 'dark' ? "bg-slate-900 border-slate-800 text-white" : "bg-white border-slate-250 text-slate-900",
                   isSidebarOpen ? "translate-x-0" : "-translate-x-full lg:absolute"
                 )}>
                 {/* Sidebar Header */}
-                <div className={cn("p-6 md:p-8 border-b shrink-0", theme === 'dark' ? "border-slate-800" : "border-slate-200")}>
+                <div className={cn("p-5 md:p-6 border-b shrink-0", theme === 'dark' ? "border-slate-800" : "border-slate-200")}>
                   <div className="flex items-center justify-between">
                     <h2 className={cn("text-[11px] md:text-[13px] font-black uppercase tracking-[0.25em]", theme === 'dark' ? "text-white" : "text-slate-900")}>
                       {t.planner}
@@ -1366,13 +1473,13 @@ export default function App() {
                     <button 
                       onClick={() => setIsSidebarOpen(false)} 
                       className={cn(
-                        "h-10 w-10 rounded-xl flex items-center justify-center active:scale-95 transition-all border shadow-[0_0_12px_rgba(255,255,255,0.35)]",
+                        "h-8 w-8 rounded-lg flex items-center justify-center active:scale-95 transition-all border shadow-sm",
                         theme === 'dark' 
                           ? "bg-slate-800 hover:bg-slate-700/80 text-white hover:text-red-400 border-slate-700" 
-                          : "bg-slate-900 text-white hover:bg-slate-800 border-slate-950"
+                          : "bg-slate-50 hover:bg-red-50 text-slate-500 hover:text-red-500 border-slate-200"
                       )}
                     >
-                      <X size={18} strokeWidth={3} className="text-white drop-shadow-[0_0_5px_rgba(255,255,255,0.9)]" />
+                      <X size={15} strokeWidth={3} />
                     </button>
                   </div>
                 </div>
@@ -1930,7 +2037,12 @@ export default function App() {
                       initial={{ y: 100, opacity: 0 }}
                       animate={{ y: 0, opacity: 1 }}
                       exit={{ y: 100, opacity: 0 }}
-                      className="fixed bottom-[116px] lg:bottom-20 left-1/2 -translate-x-1/2 w-[92%] max-w-xl z-[1550]"
+                      className={cn(
+                        "fixed left-1/2 -translate-x-1/2 w-[92%] max-w-xl z-[1550]",
+                        (isSidebarOpen || isRightSidebarOpen) 
+                          ? "bottom-6 lg:bottom-20" 
+                          : "bottom-[116px] lg:bottom-20"
+                      )}
                     >
                       <div className="bg-white dark:bg-slate-900 rounded-[2rem] md:rounded-[3rem] shadow-[0_30px_60px_-12px_rgba(0,0,0,0.4)] overflow-hidden border border-slate-100 dark:border-slate-800 flex flex-col md:flex-row h-auto md:h-72 relative">
                         {/* Global Close Button (Always top-right of the entire card) */}
@@ -2002,7 +2114,10 @@ export default function App() {
                       setIsRightSidebarOpen(false);
                     }}
                     className={cn(
-                      "absolute top-6 lg:top-10 left-6 lg:left-10 z-[1100] bg-white dark:bg-slate-900 px-6 lg:px-8 py-3 lg:py-4 rounded-2xl lg:rounded-3xl shadow-2xl border border-slate-50 dark:border-slate-800 flex items-center gap-3 lg:gap-4 hover:scale-105 transition-all text-blue-600 group active:scale-95",
+                      "absolute top-6 lg:top-10 left-6 lg:left-10 z-[1100] px-6 lg:px-8 py-3 lg:py-4 rounded-2xl lg:rounded-3xl shadow-2xl border flex items-center gap-3 lg:gap-4 hover:scale-105 transition-all group active:scale-95 transition-colors duration-500",
+                      theme === 'dark' 
+                        ? "bg-slate-900 border-slate-800 text-white" 
+                        : "bg-white border-slate-200 text-slate-800 hover:text-blue-600",
                       isViewingRoute && isRightSidebarOpen ? "hidden" : "hidden lg:flex"
                     )}
                   >
@@ -2019,7 +2134,7 @@ export default function App() {
                       animate={{ x: isRightSidebarOpen ? "0%" : "100%" }}
                       transition={{ type: "tween", ease: "easeInOut", duration: 0.35 }}
                       className={cn(
-                        "fixed lg:absolute top-0 right-0 h-full w-full sm:w-[420px] border-l z-[1200] shadow-2xl flex transition-colors duration-500",
+                        "fixed lg:absolute top-16 lg:top-0 right-0 h-[calc(100dvh-4rem)] lg:h-full w-full sm:w-[420px] border-l z-[1200] shadow-2xl flex transition-colors duration-500",
                         theme === 'dark' 
                           ? "bg-slate-900 border-slate-800 text-white" 
                           : "bg-white border-slate-200 text-slate-900"
@@ -2035,7 +2150,10 @@ export default function App() {
                           }
                         }}
                         className={cn(
-                          "absolute right-full top-24 h-14 bg-white dark:bg-slate-900 border border-slate-200/80 dark:border-slate-800 rounded-l-3xl flex items-center justify-center text-blue-600 shadow-2xl transition-all duration-300 hover:text-blue-700 active:scale-95 hover:bg-slate-50 dark:hover:bg-slate-800/80 group",
+                          "absolute right-full top-24 h-14 border rounded-l-3xl flex items-center justify-center shadow-2xl transition-all duration-300 active:scale-95 group transition-colors duration-500",
+                          theme === 'dark'
+                            ? "bg-slate-900 border-slate-800 text-white hover:bg-slate-800"
+                            : "bg-white border-slate-200 text-blue-600 hover:bg-slate-50 hover:text-blue-700",
                           isRightSidebarOpen 
                             ? "w-12 hidden sm:flex" 
                             : "w-auto px-6 gap-3 border-r-0 hidden lg:flex"
@@ -2043,11 +2161,11 @@ export default function App() {
                         title={isRightSidebarOpen ? (lang === 'tr' ? 'Kapat' : 'Close') : (lang === 'tr' ? 'Planı Gör' : 'View Plan')}
                       >
                         {isRightSidebarOpen ? (
-                          <ChevronRight size={20} className="transition-transform group-hover:translate-x-0.5" />
+                          <ChevronRight size={20} className={cn("transition-transform group-hover:translate-x-0.5", theme === 'dark' ? "text-white" : "text-blue-600")} />
                         ) : (
                           <div className="flex items-center gap-2.5">
                             <i className="fa-solid fa-calendar-day text-blue-600 text-xs animate-pulse" />
-                            <span className="text-[11px] font-black uppercase tracking-[0.15em] text-slate-800 dark:text-slate-200 whitespace-nowrap">
+                            <span className="text-[11px] font-black uppercase tracking-[0.15em] text-[#1E293B] dark:text-slate-200 whitespace-nowrap">
                               {lang === 'tr' ? 'PLANI GÖR' : 'VIEW PLAN'}
                             </span>
                             <div className="flex h-2 w-2 relative">
@@ -2059,7 +2177,7 @@ export default function App() {
                       </button>
 
                       <div className="flex-1 flex flex-col w-full max-w-full overflow-hidden">
-                        <div className={cn("p-6 md:p-8 border-b shrink-0", theme === 'dark' ? "border-slate-800" : "border-slate-200")}>
+                        <div className={cn("p-5 md:p-6 border-b shrink-0", theme === 'dark' ? "border-slate-800" : "border-slate-200")}>
                           <div className="flex items-center justify-between">
                             <h2 className={cn("text-[11px] md:text-[13px] font-black uppercase tracking-[0.25em]", theme === 'dark' ? "text-white" : "text-slate-900")}>
                               {lang === 'tr' ? 'GÜNLÜK ROTA PLANI' : 'DAILY ROUTE PLAN'}
@@ -2067,13 +2185,13 @@ export default function App() {
                             <button 
                               onClick={() => setIsRightSidebarOpen(false)} 
                               className={cn(
-                                "h-10 w-10 rounded-xl flex items-center justify-center active:scale-95 transition-all border shadow-[0_0_12px_rgba(255,255,255,0.35)]",
+                                "h-8 w-8 rounded-lg flex items-center justify-center active:scale-95 transition-all border shadow-sm",
                                 theme === 'dark' 
                                   ? "bg-slate-800 hover:bg-slate-700/80 text-white hover:text-red-400 border-slate-700" 
-                                  : "bg-slate-900 text-white hover:bg-slate-800 border-slate-950"
+                                  : "bg-slate-50 hover:bg-red-50 text-slate-500 hover:text-red-500 border-slate-200"
                               )}
                             >
-                              <X size={18} strokeWidth={3} className="text-white" />
+                              <X size={15} strokeWidth={3} />
                             </button>
                           </div>
 
@@ -2082,12 +2200,12 @@ export default function App() {
                             <motion.div 
                               initial={{ opacity: 0, height: 0 }}
                               animate={{ opacity: 1, height: "auto" }}
-                              className="mb-5 p-3.5 bg-blue-50/80 dark:bg-blue-950/40 border border-blue-200/50 dark:border-blue-900/60 rounded-2xl flex items-start gap-2.5 shadow-md overflow-hidden"
+                              className="mt-4 p-3.5 bg-blue-50/80 dark:bg-blue-950/40 border border-blue-200/50 dark:border-blue-900/60 rounded-2xl flex items-start gap-2.5 shadow-md overflow-hidden"
                             >
                               <span className="text-base shrink-0 select-none">🌧️</span>
                               <div className="text-blue-950 dark:text-blue-100 text-[11px] font-extrabold leading-normal">
                                 {lang === 'tr' 
-                                  ? "İstanbul'da yağış beklendiği için rotanız kapalı mekan etkinlikleriyle otomatik olarak optimize edilmiştir." 
+                                  ? "İstanbul 'da yağış beklendiği için rotanız kapalı mekan etkinlikleriyle otomatik olarak optimize edilmiştir." 
                                   : "Due to expected rain in Istanbul, your route has been automatically optimized with indoor activities."
                                 }
                               </div>
@@ -2095,7 +2213,7 @@ export default function App() {
                           )}
 
                           {/* Day Filter Bubbles */}
-                          <div className={cn("flex flex-wrap p-1.5 rounded-2xl border gap-1.5", theme === 'dark' ? "bg-slate-950/40 border-slate-800" : "bg-slate-50 border-slate-200/60")}>
+                          <div className={cn("flex flex-wrap p-1.5 rounded-2xl border gap-1.5 mt-4", theme === 'dark' ? "bg-slate-950/40 border-slate-800" : "bg-slate-50 border-slate-200/60")}>
                             <button 
                               onClick={() => setVisibleDay(null)}
                               className={cn(
@@ -2163,22 +2281,48 @@ export default function App() {
                                       "group p-4 border rounded-3xl transition-all cursor-pointer shadow-sm relative overflow-hidden",
                                       theme === 'dark' 
                                         ? "bg-slate-800 border-slate-700/80 text-white hover:border-blue-500 hover:shadow-2xl hover:shadow-blue-900/10" 
-                                        : "bg-slate-50/75 border-slate-200/80 text-slate-900 hover:border-blue-500 hover:bg-white hover:shadow-2xl hover:shadow-blue-50"
+                                        : "bg-slate-50/75 border-slate-200/80 text-slate-900 hover:border-blue-500 hover:bg-white hover:shadow-2xl hover:shadow-blue-50",
+                                      visitedVenues.includes(v.isim) && "opacity-45 hover:opacity-90"
                                     )}
                                     onClick={() => setSelectedVenue(v)}
                                   >
                                     <div className="flex items-center justify-between gap-4 w-full">
-                                      <div className="flex items-center gap-3 overflow-hidden">
+                                      <div className="flex items-center gap-3 overflow-hidden flex-1">
+                                        <button
+                                          onClick={(e) => {
+                                            e.stopPropagation(); // Avoid opening full card modal
+                                            const isChecked = visitedVenues.includes(v.isim);
+                                            if (isChecked) {
+                                              setVisitedVenues(prev => prev.filter(name => name !== v.isim));
+                                            } else {
+                                              setVisitedVenues(prev => [...prev, v.isim]);
+                                            }
+                                          }}
+                                          className={cn(
+                                            "w-6 h-6 rounded-full border flex items-center justify-center active:scale-95 transition-all shrink-0 cursor-pointer z-10",
+                                            visitedVenues.includes(v.isim)
+                                              ? "bg-emerald-500 border-emerald-500 text-white"
+                                              : (theme === 'dark' ? "border-slate-700 hover:border-emerald-500 hover:bg-emerald-500/10 text-transparent" : "border-slate-300 hover:border-emerald-500 hover:bg-emerald-50 text-transparent")
+                                          )}
+                                          title={lang === 'tr' ? 'Gezildi / Gittim' : 'Visited'}
+                                        >
+                                          <Check size={11} strokeWidth={3} className={visitedVenues.includes(v.isim) ? "block text-white" : "hidden group-hover:block text-emerald-500 dark:text-emerald-400"} />
+                                        </button>
+
                                         <div className={cn(
                                           "w-fit h-8 px-3 text-[10px] font-black rounded-xl flex items-center justify-center transition-colors uppercase whitespace-nowrap",
-                                          theme === 'dark' ? "bg-slate-755 text-slate-300 group-hover:bg-blue-600 group-hover:text-white" : "bg-slate-200 text-slate-700 group-hover:bg-blue-600 group-hover:text-white"
+                                          visitedVenues.includes(v.isim)
+                                            ? "bg-emerald-50 text-emerald-600 dark:bg-emerald-950/20 dark:text-emerald-400"
+                                            : (theme === 'dark' ? "bg-slate-755 text-slate-300 group-hover:bg-blue-600 group-hover:text-white" : "bg-slate-200 text-slate-700 group-hover:bg-blue-600 group-hover:text-white")
                                         )}>
                                           {day.day}. {t.day} - {vIdx + 1}
                                         </div>
-                                        <div className="overflow-hidden">
+                                        <div className="overflow-hidden flex-1">
                                           <div className={cn(
                                             "text-xs font-black truncate transition-colors uppercase tracking-tight",
-                                            theme === 'dark' ? "text-slate-100 group-hover:text-blue-400" : "text-slate-800 group-hover:text-blue-600"
+                                            visitedVenues.includes(v.isim)
+                                              ? "line-through text-slate-400 dark:text-slate-500"
+                                              : (theme === 'dark' ? "text-slate-100 group-hover:text-blue-400" : "text-slate-800 group-hover:text-blue-600")
                                           )}>
                                             {lang === 'tr' ? v.isim : (v.isim_en || v.isim)}
                                           </div>
@@ -2349,21 +2493,29 @@ export default function App() {
               animate={{ x: 0 }}
               exit={{ x: "100%" }}
               transition={{ type: "spring", damping: 25, stiffness: 200 }}
-              className="absolute top-0 right-0 h-full w-[85%] max-w-sm bg-white dark:bg-slate-900 shadow-[0_0_50px_rgba(0,0,0,0.3)] flex flex-col p-6 border-l border-slate-100 dark:border-slate-800/80"
+              className={cn(
+                "absolute top-0 right-0 h-full w-[85%] max-w-sm shadow-[0_0_50px_rgba(30,41,59,0.15)] flex flex-col p-6 border-l transition-colors duration-500",
+                theme === 'dark'
+                  ? "bg-slate-900 border-slate-800 text-white"
+                  : "bg-white border-slate-200 text-slate-950"
+              )}
               onClick={(e) => e.stopPropagation()}
             >
-              <div className="flex items-center justify-between border-b border-slate-100 dark:border-slate-800 pb-5 mb-6">
+              <div className={cn("flex items-center justify-between border-b pb-5 mb-6", theme === 'dark' ? "border-slate-800" : "border-slate-100")}>
                 <div className="flex items-center gap-2">
                   <div className="w-8 h-8 bg-blue-600 rounded-xl flex items-center justify-center text-white shadow-lg shadow-blue-500/30">
                     <div className="w-4 h-4 border-2 border-white rotate-45" />
                   </div>
-                  <span className="text-base font-black uppercase tracking-tight text-slate-900 dark:text-white">
+                  <span className={cn("text-base font-black uppercase tracking-tight", theme === 'dark' ? "text-white" : "text-slate-900")}>
                     İstanbul <span className="text-blue-600">Rehberi</span>
                   </span>
                 </div>
                 <button 
                   onClick={() => setIsMobileNavOpen(false)}
-                  className="p-2 rounded-lg bg-slate-100 dark:bg-slate-800 text-slate-500 hover:text-red-500 active:scale-95 transition-all"
+                  className={cn(
+                    "p-2 rounded-lg active:scale-95 transition-all text-slate-500 hover:text-red-500",
+                    theme === 'dark' ? "bg-slate-800 hover:bg-slate-700/80 text-slate-400" : "bg-slate-100 hover:bg-slate-200 text-slate-500"
+                  )}
                 >
                   <X size={20} />
                 </button>
@@ -2376,13 +2528,23 @@ export default function App() {
                     setActiveScreen('landing');
                     setIsMobileNavOpen(false);
                   }}
-                  className="flex items-center gap-4 p-4 rounded-2xl bg-slate-50 hover:bg-slate-100 dark:bg-slate-800/50 dark:hover:bg-slate-800 text-left transition-all group border border-transparent hover:border-blue-100 dark:hover:border-slate-700"
+                  className={cn(
+                    "flex items-center gap-4 p-4 rounded-2xl text-left transition-all group border transition-colors duration-300",
+                    theme === 'dark'
+                      ? "bg-slate-800/50 hover:bg-slate-800 border-transparent hover:border-slate-700 text-white"
+                      : "bg-slate-50 hover:bg-slate-100 border-slate-100 hover:border-blue-100 text-slate-800"
+                  )}
                 >
-                  <div className="w-10 h-10 rounded-xl bg-blue-50 dark:bg-slate-800 text-blue-600 dark:text-blue-300 flex items-center justify-center group-hover:bg-blue-600 group-hover:text-white transition-all">
+                  <div className={cn(
+                    "w-10 h-10 rounded-xl flex items-center justify-center transition-all duration-300",
+                    theme === 'dark'
+                      ? "bg-slate-800 text-blue-300 group-hover:bg-blue-600 group-hover:text-white"
+                      : "bg-blue-50 text-blue-600 group-hover:bg-blue-600 group-hover:text-white"
+                  )}>
                     <Compass size={18} />
                   </div>
                   <div>
-                    <div className="text-xs font-black uppercase tracking-widest text-slate-900 dark:text-white">
+                    <div className={cn("text-xs font-black uppercase tracking-widest", theme === 'dark' ? "text-white" : "text-slate-900")}>
                       {lang === 'tr' ? 'ANA SAYFA' : 'HOME'}
                     </div>
                     <div className="text-[10px] text-slate-400 mt-0.5">
@@ -2403,13 +2565,23 @@ export default function App() {
                       if (mapEl) mapEl.scrollIntoView({ behavior: 'smooth' });
                     }, 100);
                   }}
-                  className="flex items-center gap-4 p-4 rounded-2xl bg-slate-50 hover:bg-slate-100 dark:bg-slate-800/50 dark:hover:bg-slate-800 text-left transition-all group border border-transparent hover:border-blue-100 dark:hover:border-slate-700"
+                  className={cn(
+                    "flex items-center gap-4 p-4 rounded-2xl text-left transition-all group border transition-colors duration-300",
+                    theme === 'dark'
+                      ? "bg-slate-800/50 hover:bg-slate-800 border-transparent hover:border-slate-700 text-white"
+                      : "bg-slate-50 hover:bg-slate-100 border-slate-100 hover:border-blue-100 text-slate-800"
+                  )}
                 >
-                  <div className="w-10 h-10 rounded-xl bg-blue-50 dark:bg-slate-800 text-blue-600 dark:text-blue-300 flex items-center justify-center group-hover:bg-blue-600 group-hover:text-white transition-all">
+                  <div className={cn(
+                    "w-10 h-10 rounded-xl flex items-center justify-center transition-all duration-300",
+                    theme === 'dark'
+                      ? "bg-slate-800 text-blue-300 group-hover:bg-blue-600 group-hover:text-white"
+                      : "bg-blue-50 text-blue-600 group-hover:bg-blue-600 group-hover:text-white"
+                  )}>
                     <i className="fa-solid fa-map-location-dot text-sm" />
                   </div>
                   <div>
-                    <div className="text-xs font-black uppercase tracking-widest text-slate-900 dark:text-white">
+                    <div className={cn("text-xs font-black uppercase tracking-widest", theme === 'dark' ? "text-white" : "text-slate-900")}>
                       {t.goToMap || "Haritaya Git"}
                     </div>
                     <div className="text-[10px] text-slate-400 mt-0.5">
@@ -2425,13 +2597,23 @@ export default function App() {
                     setIsExplorerMode(false);
                     setIsMobileNavOpen(false);
                   }}
-                  className="flex items-center gap-4 p-4 rounded-2xl bg-slate-50 hover:bg-slate-100 dark:bg-slate-800/50 dark:hover:bg-slate-800 text-left transition-all group border border-transparent hover:border-blue-100 dark:hover:border-slate-700"
+                  className={cn(
+                    "flex items-center gap-4 p-4 rounded-2xl text-left transition-all group border transition-colors duration-300",
+                    theme === 'dark'
+                      ? "bg-slate-800/50 hover:bg-slate-800 border-transparent hover:border-slate-700 text-white"
+                      : "bg-slate-50 hover:bg-slate-100 border-slate-100 hover:border-blue-100 text-slate-800"
+                  )}
                 >
-                  <div className="w-10 h-10 rounded-xl bg-blue-50 dark:bg-slate-800 text-blue-600 dark:text-blue-300 flex items-center justify-center group-hover:bg-blue-600 group-hover:text-white transition-all">
+                  <div className={cn(
+                    "w-10 h-10 rounded-xl flex items-center justify-center transition-all duration-300",
+                    theme === 'dark'
+                      ? "bg-slate-800 text-blue-300 group-hover:bg-blue-600 group-hover:text-white"
+                      : "bg-blue-50 text-blue-600 group-hover:bg-blue-600 group-hover:text-white"
+                  )}>
                     <i className="fa-solid fa-route text-sm" />
                   </div>
                   <div>
-                    <div className="text-xs font-black uppercase tracking-widest text-slate-900 dark:text-white">
+                    <div className={cn("text-xs font-black uppercase tracking-widest", theme === 'dark' ? "text-white" : "text-slate-900")}>
                       {t.planner || "Seyahat Planlayıcısı"}
                     </div>
                     <div className="text-[10px] text-slate-400 mt-0.5">
@@ -2448,13 +2630,23 @@ export default function App() {
                       setIsExplorerMode(false);
                       setIsMobileNavOpen(false);
                     }}
-                    className="flex items-center gap-4 p-4 rounded-2xl bg-emerald-50 hover:bg-emerald-100 dark:bg-emerald-950/20 dark:hover:bg-emerald-900/30 text-left transition-all group border border-transparent hover:border-emerald-100 dark:hover:border-emerald-900/40"
+                    className={cn(
+                      "flex items-center gap-4 p-4 rounded-2xl text-left transition-all group border transition-colors duration-300",
+                      theme === 'dark'
+                        ? "bg-emerald-950/20 hover:bg-emerald-900/30 border-transparent hover:border-emerald-905/40"
+                        : "bg-emerald-50 hover:bg-emerald-100 border-emerald-100 hover:border-emerald-200"
+                    )}
                   >
-                    <div className="w-10 h-10 rounded-xl bg-emerald-500 text-slate-950 flex items-center justify-center transition-all">
+                    <div className={cn(
+                      "w-10 h-10 rounded-xl flex items-center justify-center transition-all duration-300",
+                      theme === 'dark'
+                        ? "bg-emerald-500/20 text-emerald-400 group-hover:bg-emerald-500 group-hover:text-slate-950"
+                        : "bg-emerald-550 text-white shadow-md shadow-emerald-500/10 group-hover:scale-105"
+                    )}>
                       <i className="fa-solid fa-calendar-day text-sm" />
                     </div>
                     <div>
-                      <div className="text-xs font-black uppercase tracking-widest text-emerald-600 dark:text-emerald-400">
+                      <div className={cn("text-xs font-black uppercase tracking-widest", theme === 'dark' ? "text-emerald-400" : "text-emerald-600")}>
                         {lang === 'tr' ? 'GÜNLÜK PLANI GÖR' : 'VIEW ITINERARY'}
                       </div>
                       <div className="text-[10px] text-slate-400 mt-0.5">
@@ -2469,13 +2661,23 @@ export default function App() {
                     setShowHowItWorks(true);
                     setIsMobileNavOpen(false);
                   }}
-                  className="flex items-center gap-4 p-4 rounded-2xl bg-slate-50 hover:bg-slate-100 dark:bg-slate-800/50 dark:hover:bg-slate-800 text-left transition-all group border border-transparent hover:border-blue-100 dark:hover:border-slate-700"
+                  className={cn(
+                    "flex items-center gap-4 p-4 rounded-2xl text-left transition-all group border transition-colors duration-300",
+                    theme === 'dark'
+                      ? "bg-slate-800/50 hover:bg-slate-800 border-transparent hover:border-slate-700 text-white"
+                      : "bg-slate-50 hover:bg-slate-100 border-slate-100 hover:border-blue-100 text-slate-800"
+                  )}
                 >
-                  <div className="w-10 h-10 rounded-xl bg-blue-50 dark:bg-slate-800 text-blue-600 dark:text-blue-300 flex items-center justify-center group-hover:bg-blue-600 group-hover:text-white transition-all">
+                  <div className={cn(
+                    "w-10 h-10 rounded-xl flex items-center justify-center transition-all duration-300",
+                    theme === 'dark'
+                      ? "bg-slate-800 text-blue-300 group-hover:bg-blue-600 group-hover:text-white"
+                      : "bg-blue-50 text-blue-600 group-hover:bg-blue-600 group-hover:text-white"
+                  )}>
                     <i className="fa-solid fa-circle-question text-sm" />
                   </div>
                   <div>
-                    <div className="text-xs font-black uppercase tracking-widest text-slate-900 dark:text-white">
+                    <div className={cn("text-xs font-black uppercase tracking-widest", theme === 'dark' ? "text-white" : "text-slate-900")}>
                       {t.howItWorks || "Nasıl Çalışır?"}
                     </div>
                     <div className="text-[10px] text-slate-400 mt-0.5">
@@ -2489,13 +2691,23 @@ export default function App() {
                     setShowHowItWorks(true); // also covers details
                     setIsMobileNavOpen(false);
                   }}
-                  className="flex items-center gap-4 p-4 rounded-2xl bg-slate-50 hover:bg-slate-100 dark:bg-slate-800/50 dark:hover:bg-slate-800 text-left transition-all group border border-transparent hover:border-blue-100 dark:hover:border-slate-700"
+                  className={cn(
+                    "flex items-center gap-4 p-4 rounded-2xl text-left transition-all group border transition-colors duration-300",
+                    theme === 'dark'
+                      ? "bg-slate-800/50 hover:bg-slate-800 border-transparent hover:border-slate-700 text-white"
+                      : "bg-slate-50 hover:bg-slate-100 border-slate-100 hover:border-blue-100 text-slate-800"
+                  )}
                 >
-                  <div className="w-10 h-10 rounded-xl bg-blue-50 dark:bg-slate-800 text-blue-600 dark:text-blue-300 flex items-center justify-center group-hover:bg-blue-600 group-hover:text-white transition-all">
+                  <div className={cn(
+                    "w-10 h-10 rounded-xl flex items-center justify-center transition-all duration-300",
+                    theme === 'dark'
+                      ? "bg-slate-800 text-blue-300 group-hover:bg-blue-600 group-hover:text-white"
+                      : "bg-blue-50 text-blue-600 group-hover:bg-blue-600 group-hover:text-white"
+                  )}>
                     <i className="fa-solid fa-circle-info text-sm" />
                   </div>
                   <div>
-                    <div className="text-xs font-black uppercase tracking-widest text-slate-900 dark:text-white">
+                    <div className={cn("text-xs font-black uppercase tracking-widest", theme === 'dark' ? "text-white" : "text-slate-900")}>
                       {t.about || "Hakkımızda"}
                     </div>
                     <div className="text-[10px] text-slate-400 mt-0.5">
@@ -2506,20 +2718,25 @@ export default function App() {
               </div>
 
               {/* Language Selector + Theme inside Drawer Foot */}
-              <div className="mt-auto pt-6 border-t border-slate-100 dark:border-slate-800 space-y-4">
-                <div className="flex justify-between items-center bg-slate-50 dark:bg-slate-800 p-3 rounded-2xl">
+              <div className={cn("mt-auto pt-6 border-t space-y-4", theme === 'dark' ? "border-slate-800" : "border-slate-100")}>
+                <div className={cn("flex justify-between items-center p-3 rounded-2xl transition-colors duration-300", theme === 'dark' ? "bg-slate-800" : "bg-slate-50")}>
                   <span className="text-[10px] font-black uppercase tracking-wider text-slate-400 dark:text-slate-500">
                     {lang === 'tr' ? 'DİL SEÇİMİ' : 'LANGUAGE'}
                   </span>
-                  <div className="flex bg-slate-200 dark:bg-slate-700 p-1 rounded-xl">
-                    <button onClick={() => setLang('tr')} className={cn("px-3 py-1 text-[10px] font-black rounded-lg transition-all", lang === 'tr' ? "bg-white dark:bg-slate-600 shadow-sm text-blue-600" : "text-slate-400")}>TR</button>
-                    <button onClick={() => setLang('en')} className={cn("px-3 py-1 text-[10px] font-black rounded-lg transition-all", lang === 'en' ? "bg-white dark:bg-slate-600 shadow-sm text-blue-600" : "text-slate-400")}>EN</button>
+                  <div className={cn("flex p-1 rounded-xl transition-colors duration-300", theme === 'dark' ? "bg-slate-700" : "bg-slate-200")}>
+                    <button onClick={() => setLang('tr')} className={cn("px-3 py-1 text-[10px] font-black rounded-lg transition-all", lang === 'tr' ? (theme === 'dark' ? "bg-slate-600 text-white" : "bg-white shadow-sm text-blue-600") : "text-slate-400")}>TR</button>
+                    <button onClick={() => setLang('en')} className={cn("px-3 py-1 text-[10px] font-black rounded-lg transition-all", lang === 'en' ? (theme === 'dark' ? "bg-slate-600 text-white" : "bg-white shadow-sm text-blue-600") : "text-slate-400")}>EN</button>
                   </div>
                 </div>
                 
                 <button 
                   onClick={() => setTheme(theme === 'light' ? 'dark' : 'light')}
-                  className="w-full h-12 rounded-2xl bg-slate-50 hover:bg-slate-100 dark:bg-slate-800/80 text-slate-700 dark:text-slate-300 font-black text-xs uppercase tracking-widest flex items-center justify-center gap-3 border border-slate-100 dark:border-slate-800"
+                  className={cn(
+                    "w-full h-12 rounded-2xl font-black text-xs uppercase tracking-widest flex items-center justify-center gap-3 border transition-all duration-300",
+                    theme === 'dark' 
+                      ? "bg-slate-800 hover:bg-slate-700 text-white border-slate-700" 
+                      : "bg-slate-50 hover:bg-slate-100 text-slate-700 border-slate-150 shadow-sm"
+                  )}
                 >
                   {theme === 'light' ? (
                     <>
@@ -2550,7 +2767,12 @@ export default function App() {
             dragMomentum={false}
             dragElastic={0.15}
             whileDrag={{ scale: 1.02 }}
-            className="fixed bottom-[110px] lg:bottom-10 right-4 lg:right-10 z-[3200] w-[92%] sm:w-[380px] bg-slate-950/95 text-white p-5 rounded-3xl shadow-[0_30px_60px_rgba(0,0,0,0.6)] border border-slate-800/80 backdrop-blur-2xl cursor-grab active:cursor-grabbing select-none"
+            className={cn(
+              "fixed right-4 lg:right-10 z-[3200] w-[92%] sm:w-[380px] bg-slate-950/95 text-white p-5 rounded-3xl shadow-[0_30px_60px_rgba(0,0,0,0.6)] border border-slate-800/80 backdrop-blur-2xl cursor-grab active:cursor-grabbing select-none",
+              (isSidebarOpen || isRightSidebarOpen)
+                ? "bottom-4 lg:bottom-10"
+                : "bottom-[110px] lg:bottom-10"
+            )}
           >
             <div className="flex items-center justify-between pb-3 border-b border-slate-800/80 mb-3.5">
               <div className="flex items-center gap-2.5 select-none pointer-events-none">
@@ -2659,12 +2881,17 @@ export default function App() {
       </AnimatePresence>
 
       {/* Unified Mobile Bottom Navigation Floating Action Bar */}
-      {activeScreen === 'app' && !isMobileNavOpen && (
+      {activeScreen === 'app' && !isMobileNavOpen && !isSidebarOpen && !isRightSidebarOpen && (
         <div className="lg:hidden fixed bottom-6 left-1/2 -translate-x-1/2 z-[3100] w-[92%] max-w-sm">
           <motion.div 
             initial={{ y: 50, opacity: 0 }}
             animate={{ y: 0, opacity: 1 }}
-            className="bg-slate-950/95 dark:bg-slate-950/95 backdrop-blur-3xl px-6 py-3 rounded-2xl shadow-[0_20px_50px_rgba(0,0,0,0.6)] border border-slate-800/80 flex items-center justify-around gap-2"
+            className={cn(
+              "backdrop-blur-3xl px-6 py-3 rounded-2xl flex items-center justify-around gap-2 transition-colors duration-500",
+              theme === 'dark'
+                ? "bg-slate-950/95 border border-slate-800/80 shadow-[0_20px_50px_rgba(0,0,0,0.6)]"
+                : "bg-white/95 border border-slate-200 shadow-[0_15px_40px_rgba(15,23,42,0.15)]"
+            )}
           >
             {/* Route Planner Button */}
             {(() => {
@@ -2681,14 +2908,20 @@ export default function App() {
                   <div className={cn(
                     "w-9 h-9 rounded-full flex items-center justify-center mb-1 transition-all duration-300",
                     isPlannerActive 
-                      ? "bg-blue-600 text-white shadow-[0_0_15px_rgba(37,99,235,0.5)] transform scale-110" 
-                      : "bg-blue-500/10 text-blue-400 hover:bg-blue-500/20"
+                      ? (theme === 'dark' 
+                          ? "bg-blue-600 text-white shadow-[0_0_15px_rgba(37,99,235,0.5)] transform scale-110" 
+                          : "bg-blue-600 text-white shadow-[0_8px_16px_rgba(37,99,235,0.25)] transform scale-110")
+                      : (theme === 'dark' 
+                          ? "bg-blue-500/10 text-blue-400 hover:bg-blue-500/20" 
+                          : "bg-blue-50 text-blue-600 hover:bg-blue-100")
                   )}>
                     <Calendar size={16} />
                   </div>
                   <span className={cn(
                     "text-[9px] uppercase tracking-widest transition-colors duration-300",
-                    isPlannerActive ? "text-blue-400 font-black" : "text-slate-400 font-bold"
+                    isPlannerActive 
+                      ? (theme === 'dark' ? "text-blue-400 font-black" : "text-blue-600 font-black") 
+                      : (theme === 'dark' ? "text-slate-400 font-bold" : "text-slate-500 font-bold")
                   )}>
                     {lang === 'tr' ? 'PLANLAYICI' : 'PLANNER'}
                   </span>
@@ -2699,7 +2932,7 @@ export default function App() {
             {/* Dynamic Route View Button (Only if route loaded) */}
             {routeData.length > 0 && (
               <>
-                <div className="w-px h-8 bg-slate-800/50" />
+                <div className={cn("w-px h-8", theme === 'dark' ? "bg-slate-800/50" : "bg-slate-200")} />
                 
                 {(() => {
                   const isPlanActive = isRightSidebarOpen && !isSidebarOpen && !isExplorerMode;
@@ -2715,20 +2948,26 @@ export default function App() {
                       <div className={cn(
                         "w-9 h-9 rounded-full flex items-center justify-center mb-1 transition-all duration-300",
                         isPlanActive 
-                          ? "bg-emerald-500 text-slate-950 shadow-[0_0_15px_rgba(16,185,129,0.5)] transform scale-110" 
-                          : "bg-emerald-500/10 text-emerald-400 hover:bg-emerald-500/20"
+                          ? (theme === 'dark' 
+                              ? "bg-emerald-500 text-slate-950 shadow-[0_0_15px_rgba(16,185,129,0.5)] transform scale-110" 
+                              : "bg-emerald-500 text-white shadow-[0_8px_16px_rgba(16,185,129,0.25)] transform scale-110") 
+                          : (theme === 'dark' 
+                              ? "bg-emerald-500/10 text-emerald-400 hover:bg-emerald-500/20" 
+                              : "bg-emerald-50 text-emerald-600 hover:bg-emerald-100")
                       )}>
                         <i className="fa-solid fa-route text-xs" />
                         {!isPlanActive && (
                           <div className="absolute top-1 right-5 flex h-1.5 w-1.5">
-                            <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
-                            <span className="relative inline-flex rounded-full h-1.5 w-1.5 bg-emerald-500"></span>
+                            <span className={cn("animate-ping absolute inline-flex h-full w-full rounded-full opacity-75", theme === 'dark' ? "bg-emerald-400" : "bg-emerald-500")}></span>
+                            <span className={cn("relative inline-flex rounded-full h-1.5 w-1.5", theme === 'dark' ? "bg-emerald-500" : "bg-emerald-600")}></span>
                           </div>
                         )}
                       </div>
                       <span className={cn(
                         "text-[9px] uppercase tracking-widest transition-colors duration-300",
-                        isPlanActive ? "text-emerald-400 font-black" : "text-slate-400 font-bold"
+                        isPlanActive 
+                          ? (theme === 'dark' ? "text-emerald-400 font-black" : "text-emerald-600 font-black") 
+                          : (theme === 'dark' ? "text-slate-400 font-bold" : "text-slate-500 font-bold")
                       )}>
                         {lang === 'tr' ? 'PLANI GÖR' : 'VIEW PLAN'}
                       </span>
@@ -2739,7 +2978,7 @@ export default function App() {
             )}
 
             {/* Explore standalone screen button */}
-            <div className="w-px h-8 bg-slate-800/50" />
+            <div className={cn("w-px h-8", theme === 'dark' ? "bg-slate-800/50" : "bg-slate-200")} />
             
             {(() => {
               const isMapActive = !isSidebarOpen && !isRightSidebarOpen;
@@ -2763,14 +3002,20 @@ export default function App() {
                   <div className={cn(
                     "w-9 h-9 rounded-full flex items-center justify-center mb-1 transition-all duration-300",
                     isMapActive 
-                      ? "bg-amber-500 text-slate-950 shadow-[0_0_15px_rgba(245,158,11,0.5)] transform scale-110" 
-                      : "bg-amber-500/10 text-amber-400 hover:bg-amber-500/20"
+                      ? (theme === 'dark' 
+                          ? "bg-amber-500 text-slate-950 shadow-[0_0_15px_rgba(245,158,11,0.5)] transform scale-110" 
+                          : "bg-amber-500 text-slate-950 shadow-[0_8px_16px_rgba(245,158,11,0.25)] transform scale-110") 
+                      : (theme === 'dark' 
+                          ? "bg-amber-500/10 text-amber-400 hover:bg-amber-500/20" 
+                          : "bg-amber-50 text-amber-600 hover:bg-amber-100")
                   )}>
                     <i className="fa-solid fa-map-location-dot text-xs" />
                   </div>
                   <span className={cn(
                     "text-[9px] uppercase tracking-widest transition-colors duration-300",
-                    isMapActive ? "text-amber-400 font-black" : "text-slate-400 font-bold"
+                    isMapActive 
+                      ? (theme === 'dark' ? "text-amber-400 font-black" : "text-amber-600 font-black") 
+                      : (theme === 'dark' ? "text-slate-400 font-bold" : "text-slate-500 font-bold")
                   )}>
                     {lang === 'tr' ? 'HARİTA' : 'EXPLORE'}
                   </span>
