@@ -138,19 +138,57 @@ div.completely-invisible-leaflet-wrapper,
   scrollbar-width: none !important;  /* Firefox */
 }
 
-/* Force all text inside Leaflet popups (both dark/light mode) to be completely black */
-.leaflet-popup-content,
+/* Force all elements inside Leaflet popups (both dark/light mode) to have high contrast white background and black text representation */
+.custom-popup .leaflet-popup-content-wrapper,
 .leaflet-popup-content-wrapper,
-.leaflet-popup-content *,
-.leaflet-popup-content-wrapper *,
+.leaflet-popup-content,
 .custom-popup,
-.custom-popup * {
-  color: #000000 !important;
+.leaflet-popup {
+  background: #ffffff !important;
+  background-color: #ffffff !important;
+  color: #060b13 !important;
 }
 
-/* Ensure the button text color in the popup is white for excellent action button contrast */
+.custom-popup * :not(button):not(button *),
+.leaflet-popup-content * :not(button):not(button *) {
+  background: transparent !important;
+  background-color: transparent !important;
+  color: #060b13 !important;
+}
+
+.leaflet-popup-content,
+.leaflet-popup-content *,
+.leaflet-popup-content-wrapper,
+.leaflet-popup-content-wrapper * :not(button):not(button *) {
+  color: #060b13 !important;
+}
+
+.leaflet-popup-tip {
+  background: #ffffff !important;
+  background-color: #ffffff !important;
+}
+
+/* Ensure the action button has beautiful solid emerald green background and high-contrast white text */
 .leaflet-popup-content button,
 .leaflet-popup-content-wrapper button,
-.custom-popup button {
-  color: #FFFFFF !important;
+.custom-popup button,
+.leaflet-popup-content button *,
+.leaflet-popup-content-wrapper button *,
+.custom-popup button * {
+  background: #10b981 !important;
+  background-color: #10b981 !important;
+  color: #ffffff !important;
+}
+
+.leaflet-popup-content button:hover,
+.leaflet-popup-content-wrapper button:hover,
+.custom-popup button:hover {
+  background: #059669 !important;
+  background-color: #059669 !important;
+}
+
+.leaflet-container a.leaflet-popup-close-button {
+  color: #64748b !important;
+  background: transparent !important;
+  background-color: transparent !important;
 }

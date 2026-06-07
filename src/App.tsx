@@ -120,6 +120,12 @@ function MapFlyer({ target }: { target: { center: [number, number], zoom: number
 
 function RouteFitter({ routeData }: { routeData: { day: number, venues: Venue[] }[] }) {
   const map = useMap();
+  
+  // Create a stable string fingerprint of the active routes to avoid refitting on every render/audio play tick
+  const routeFingerprint = routeData
+    .flatMap(day => day.venues.map(v => `${v.isim}-${v.koordinat.enlem}-${v.koordinat.boylam}`))
+    .join('|');
+
   useEffect(() => {
     if (routeData.length > 0) {
       const allCoords = routeData.flatMap(day => 
@@ -130,7 +136,9 @@ function RouteFitter({ routeData }: { routeData: { day: number, venues: Venue[] 
         map.flyToBounds(bounds, { padding: [80, 80], maxZoom: 15, duration: 2 });
       }
     }
-  }, [routeData, map]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [routeFingerprint, map]);
+
   return null;
 }
 
@@ -318,7 +326,7 @@ export default function App() {
   const [isViewingRoute, setIsViewingRoute] = useState(false);
   const [visibleDay, setVisibleDay] = useState<number | null>(null);
   const [isRightSidebarOpen, setIsRightSidebarOpen] = useState(true);
-  const [showHowItWorks, setShowHowItWorks] = useState(false);
+  const [infoModalType, setInfoModalType] = useState<'about' | 'how-it-works' | null>(null);
   const [lang, setLang] = useState<'tr' | 'en'>('tr');
   const [theme, setTheme] = useState<'light' | 'dark'>('light');
 
@@ -1545,7 +1553,7 @@ export default function App() {
                 </div>
                 
                 <div className="hidden lg:flex items-center gap-10 text-[13px] font-black uppercase tracking-widest text-slate-600 dark:text-slate-150">
-                  <button onClick={() => setShowHowItWorks(true)} className="hover:text-blue-600 dark:hover:text-blue-400 transition-colors uppercase">{t.about}</button>
+                  <button onClick={() => setInfoModalType('about')} className="hover:text-blue-600 dark:hover:text-blue-400 transition-colors uppercase">{t.about}</button>
                   <button 
                     onClick={() => {
                       clearRoute();
@@ -1558,7 +1566,7 @@ export default function App() {
                     className="hover:text-blue-600 dark:hover:text-blue-400 transition-colors uppercase"
                   >{t.goToMap}</button>
                   <button onClick={() => setIsSidebarOpen(true)} className="text-blue-600 dark:text-blue-400 uppercase">{t.createRoute}</button>
-                  <button onClick={() => setShowHowItWorks(true)} className="hover:text-blue-600 dark:hover:text-blue-400 transition-colors uppercase">{t.howItWorks}</button>
+                  <button onClick={() => setInfoModalType('how-it-works')} className="hover:text-blue-600 dark:hover:text-blue-400 transition-colors uppercase">{t.howItWorks}</button>
                 </div>
 
                 <div className="flex items-center gap-1.5 sm:gap-4 shrink-0">
@@ -2760,7 +2768,7 @@ export default function App() {
 
       {/* How it Works / About Modal */}
       <AnimatePresence>
-        {showHowItWorks && (
+        {infoModalType && (
           <motion.div 
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
@@ -2771,49 +2779,42 @@ export default function App() {
               initial={{ scale: 0.95, y: 30 }}
               animate={{ scale: 1, y: 0 }}
               exit={{ scale: 0.95, y: 30 }}
-              className="bg-white dark:bg-slate-900 rounded-[2rem] sm:rounded-[3rem] shadow-[0_50px_100px_-20px_rgba(0,0,0,0.4)] max-w-xl w-full p-6 sm:p-8 relative overflow-hidden border border-slate-100 dark:border-slate-800"
+              className="bg-white dark:bg-slate-900 rounded-[2rem] sm:rounded-[3rem] shadow-[0_50px_100px_-20px_rgba(0,0,0,0.4)] max-w-xl w-full p-6 sm:p-8 relative overflow-y-auto max-h-[92vh] border border-slate-100 dark:border-slate-800 no-scrollbar"
             >
-              <div className="absolute -top-24 -right-24 w-64 h-64 bg-blue-50 dark:bg-blue-900/20 rounded-full blur-3xl opacity-50" />
+              <div className="absolute -top-24 -right-24 w-64 h-64 bg-blue-50 dark:bg-blue-900/20 rounded-full blur-3xl opacity-50 pointer-events-none" />
               <button 
-                onClick={() => setShowHowItWorks(false)}
-                className="absolute right-4 sm:right-6 top-4 sm:top-6 p-2.5 bg-slate-50 dark:bg-slate-800 rounded-full text-slate-400 hover:text-blue-600 dark:hover:text-blue-400 transition-all border border-slate-100 dark:border-slate-700 hover:scale-105 active:scale-95"
+                onClick={() => setInfoModalType(null)}
+                className="absolute right-4 sm:right-6 top-4 sm:top-6 p-2.5 bg-slate-50 dark:bg-slate-800 rounded-full text-slate-400 hover:text-blue-600 dark:hover:text-blue-400 transition-all border border-slate-100 dark:border-slate-700 hover:scale-105 active:scale-95 z-10"
               >
                 <X size={18} />
               </button>
               
-              <div className="w-12 h-12 bg-blue-600 rounded-2xl flex items-center justify-center text-white mb-4 shadow-xl shadow-blue-500/20">
-                <Sparkles size={24} />
-              </div>
-              
-              <h2 className="text-xl sm:text-2xl font-black text-slate-900 dark:text-white mb-2 uppercase tracking-tighter">{t.howItWorksTitle}</h2>
-              <p className="text-xs sm:text-sm text-slate-500 dark:text-slate-400 leading-relaxed mb-4 font-semibold">
-                {t.howItWorksDesc}
-              </p>
-
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mb-4">
-                <div className="p-3.5 bg-slate-50 dark:bg-slate-800/60 rounded-2xl border border-slate-100 dark:border-slate-800 flex gap-3">
-                  <div className="w-9 h-9 shrink-0 bg-white dark:bg-slate-700 rounded-xl flex items-center justify-center text-blue-600 shadow-sm"><Navigation size={18} /></div>
-                  <div>
-                    <h4 className="font-black text-slate-800 dark:text-slate-100 text-[10px] sm:text-[11px] uppercase tracking-wider mb-0.5">{t.optimization}</h4>
-                    <p className="text-[10px] leading-snug text-slate-400 font-bold">{t.optimizationDesc}</p>
+              {infoModalType === 'how-it-works' ? (
+                <>
+                  <div className="w-12 h-12 bg-blue-600 rounded-2xl flex items-center justify-center text-white mb-4 shadow-xl shadow-blue-500/20">
+                    <Sparkles size={24} />
                   </div>
-                </div>
-                <div className="p-3.5 bg-slate-50 dark:bg-slate-800/60 rounded-2xl border border-slate-100 dark:border-slate-800 flex gap-3">
-                  <div className="w-9 h-9 shrink-0 bg-white dark:bg-slate-700 rounded-xl flex items-center justify-center text-blue-600 shadow-sm"><CheckCircle2 size={18} /></div>
-                  <div>
-                    <h4 className="font-black text-slate-800 dark:text-slate-100 text-[10px] sm:text-[11px] uppercase tracking-wider mb-0.5">{t.typeFiltering}</h4>
-                    <p className="text-[10px] leading-snug text-slate-400 font-bold">{t.typeFilteringDesc}</p>
+                  
+                  <h2 className="text-xl sm:text-2xl font-black text-slate-900 dark:text-white mb-2 uppercase tracking-tighter">{t.howItWorksTitle}</h2>
+                  <p className="text-xs sm:text-sm text-slate-500 dark:text-slate-400 leading-relaxed mb-6 font-semibold whitespace-pre-line">
+                    {t.howItWorksDesc}
+                  </p>
+                </>
+              ) : (
+                <>
+                  <div className="w-12 h-12 bg-emerald-600 rounded-2xl flex items-center justify-center text-white mb-4 shadow-xl shadow-emerald-500/20">
+                    <Sparkles size={24} />
                   </div>
-                </div>
-              </div>
-
-              <div className="mb-5 sm:mb-6">
-                <h3 className="text-[10px] font-black text-slate-400 dark:text-slate-500 mb-1 uppercase tracking-[0.20em]">{t.aboutTitle}</h3>
-                <p className="text-xs text-slate-500 dark:text-slate-400 leading-relaxed font-semibold whitespace-pre-line">{t.aboutDesc}</p>
-              </div>
+                  
+                  <h2 className="text-xl sm:text-2xl font-black text-slate-900 dark:text-white mb-2 uppercase tracking-tighter">{t.aboutTitle}</h2>
+                  <p className="text-xs sm:text-sm text-slate-500 dark:text-slate-400 leading-relaxed mb-6 font-semibold whitespace-pre-line">
+                    {t.aboutDesc}
+                  </p>
+                </>
+              )}
               
               <button 
-                onClick={() => setShowHowItWorks(false)}
+                onClick={() => setInfoModalType(null)}
                 className="w-full bg-slate-900 dark:bg-blue-600 text-white py-3.5 sm:py-4 rounded-2xl font-black text-xs uppercase tracking-widest hover:bg-blue-600 dark:hover:bg-blue-700 hover:scale-[1.02] active:scale-[0.98] transition-all shadow-lg"
               >
                 {t.ready}
@@ -3003,7 +3004,7 @@ export default function App() {
 
                 <button 
                   onClick={() => {
-                    setShowHowItWorks(true);
+                    setInfoModalType('how-it-works');
                     setIsMobileNavOpen(false);
                   }}
                   className={cn(
@@ -3033,7 +3034,7 @@ export default function App() {
 
                 <button 
                   onClick={() => {
-                    setShowHowItWorks(true); // also covers details
+                    setInfoModalType('about');
                     setIsMobileNavOpen(false);
                   }}
                   className={cn(
@@ -3226,8 +3227,11 @@ export default function App() {
       </AnimatePresence>
 
       {/* Unified Mobile Bottom Navigation Floating Action Bar */}
-      {activeScreen === 'app' && !isMobileNavOpen && (routeData.length === 0 || (!isSidebarOpen && !isRightSidebarOpen)) && (
-        <div className="lg:hidden fixed bottom-6 left-1/2 -translate-x-1/2 z-[3100] w-[92%] max-w-sm">
+      {activeScreen === 'app' && !isMobileNavOpen && (
+        <div className={cn(
+          "lg:hidden fixed bottom-6 left-1/2 -translate-x-1/2 z-[3100] w-[92%] max-w-sm transition-all duration-300",
+          (isSidebarOpen || isRightSidebarOpen) ? "opacity-0 pointer-events-none translate-y-10 scale-95" : "opacity-100 translate-y-0 scale-100"
+        )}>
           <motion.div 
             initial={{ y: 50, opacity: 0 }}
             animate={{ y: 0, opacity: 1 }}

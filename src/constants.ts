@@ -78,7 +78,12 @@ export const TRANSLATIONS = {
     audioGuide: "Sesli Rehber", howItWorks: "Nasıl Çalışır?", about: "Hakkımızda", goToMap: "Haritaya Git",
     settings: "Ayarları Aç", serverActive: "Sunucu Aktif", dataStandards: "Kültür ve Turizm Bakanlığı Veri Standartları",
     howItWorksTitle: "Akıllı Rota Teknolojisi", ready: "Keşfetmeye Hazırım", aboutTitle: "Hakkımızda",
-    howItWorksDesc: "Otelini veya gezmek istediğin semti seç, gün sayısını belirle; yapay zekamız senin için en kısa ulaşım süreli ve en mantıklı gezi rotasını anında hazırlasın!",
+    howItWorksDesc: `İstanbul Akıllı Rehber, karmaşık seyahat planlarını saniyeler içinde optimize eden 4 adımlı akıllı bir algoritma mimarisiyle çalışır:
+
+1. Başlangıç Noktası Seçimi: Seyahatinize otelinizden, belirli bir semtten veya anlık GPS konumunuzdan dinamik olarak başlayabilirsiniz.
+2. Akıllı Rota Planlama: Gezi sürenizi ve günlük temponuzu belirlediğinizde, yapay zekamız lokasyonlar arası coğrafi mesafeleri (enlem/boylam) ve minimum ulaşım sürelerini hesaplayarak gün bazlı mantıklı bir seyahat çizgisi çıkarır.
+3. Anlık Hava Durumu Optimizasyonu: Sistem, canlı hava durumu tahminlerini analiz ederek açık hava mekanları ile kapalı alan aktivitelerini (müze, sarnıç, kilise vb.) yağış durumuna göre otomatik olarak yer değiştirir.
+4. İnteraktif Gezi Asistanı: Harita üzerinden rotanızı takip edebilir, yakındaki keşif çapını genişleterek gizli mekanları plana ekleyebilir, sesli rehber desteğiyle şehri dinleyebilir ve gezdiğiniz yerleri 'Gittim' olarak işaretleyip ilerlemenizi tarayıcı hafızasına kaydedebilirsiniz.`,
     optimization: "Mesafe Optimizasyonu", optimizationDesc: "En yakın noktalar algoritma ile sıralanır.",
     typeFiltering: "Tür Bazlı Filtreleme", typeFilteringDesc: "Sadece ilgi duyduğunuz kategoriler dâhil edilir.",
     aboutDesc: `İstanbul Akıllı Rehber, dünyanın en büyüleyici metropollerinden biri olan İstanbul'u keşfetmeyi tamamen kişiselleştirilmiş ve zahmetsiz bir deneyime dönüştürmek amacıyla geliştirilmiş yeni nesil bir dijital seyahat planlayıcıdır.
