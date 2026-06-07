@@ -137,3 +137,20 @@ div.completely-invisible-leaflet-wrapper,
   -ms-overflow-style: none !important;  /* IE and Edge */
   scrollbar-width: none !important;  /* Firefox */
 }
+
+/* Force all text inside Leaflet popups (both dark/light mode) to be completely black */
+.leaflet-popup-content,
+.leaflet-popup-content-wrapper,
+.leaflet-popup-content *,
+.leaflet-popup-content-wrapper *,
+.custom-popup,
+.custom-popup * {
+  color: #000000 !important;
+}
+
+/* Ensure the button text color in the popup is white for excellent action button contrast */
+.leaflet-popup-content button,
+.leaflet-popup-content-wrapper button,
+.custom-popup button {
+  color: #FFFFFF !important;
+}

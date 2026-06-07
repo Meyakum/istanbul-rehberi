@@ -69,7 +69,7 @@ const categoryMapping: { [key: string]: { icon: string, color: string } } = {
   "Sanat Merkezi": { icon: "fa-ticket", color: "#ef4444" }
 };
 
-const createCategoryIcon = (tur: string, label?: string, customColor?: string) => {
+const createCategoryIcon = (tur: string, label?: string, customColor?: string, isVisited?: boolean) => {
   let matched = { icon: "fa-map-marker-alt", color: "#3b82f6" };
   
   for (const key in categoryMapping) {
@@ -79,13 +79,14 @@ const createCategoryIcon = (tur: string, label?: string, customColor?: string) =
     }
   }
 
-  const markerColor = customColor || matched.color;
+  const markerColor = isVisited ? "#94a3b8" : (customColor || matched.color);
+  const shadowStyle = isVisited ? "rgba(0,0,0,0.1)" : `${markerColor}80`;
 
   return L.divIcon({
     className: 'custom-icon',
     html: `
-      <div class="marker-container" style="position: relative; display: flex; flex-direction: column; align-items: center;">
-        <div class="marker-category" style="background-color: ${markerColor}; color: white; width: 38px; height: 38px; border-radius: 14px; display: flex; align-items: center; justify-content: center; font-size: 16px; border: 2px solid white; box-shadow: 0 0 15px ${markerColor}80, 0 4px 12px rgba(0,0,0,0.3); transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);">
+      <div class="marker-container" style="position: relative; display: flex; flex-direction: column; align-items: center; opacity: ${isVisited ? '0.7' : '1.0'};">
+        <div class="marker-category" style="background-color: ${markerColor}; color: white; width: 38px; height: 38px; border-radius: 14px; display: flex; align-items: center; justify-content: center; font-size: 16px; border: 2px solid white; box-shadow: 0 0 15px ${shadowStyle}, 0 4px 12px rgba(0,0,0,0.3); transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);">
           <i class="fa-solid ${matched.icon}"></i>
         </div>
         ${label ? `
@@ -336,6 +337,25 @@ export default function App() {
 
   // Sharing, toast notification, auto-drawing, and download states
   const [toastMessage, setToastMessage] = useState<string | null>(null);
+  const [toastVisible, setToastVisible] = useState<boolean>(false);
+
+  // STAGE 3: Automatic timeout for toast notifications
+  useEffect(() => {
+    if (toastMessage) {
+      setToastVisible(true);
+      const fadeTimer = setTimeout(() => {
+        setToastVisible(false);
+      }, 3500);
+      const unmountTimer = setTimeout(() => {
+        setToastMessage(null);
+      }, 3900); // 3500ms visible + 400ms fade transition
+      return () => {
+        clearTimeout(fadeTimer);
+        clearTimeout(unmountTimer);
+      };
+    }
+  }, [toastMessage]);
+
   const [isDownloadingPDF, setIsDownloadingPDF] = useState<boolean>(false);
   const [voices, setVoices] = useState<SpeechSynthesisVoice[]>([]);
   const [shouldAutoDraw, setShouldAutoDraw] = useState<boolean>(false);
@@ -409,9 +429,6 @@ export default function App() {
 
   const showToast = (msg: string) => {
     setToastMessage(msg);
-    setTimeout(() => {
-      setToastMessage(null);
-    }, 3000);
   };
 
   // Load and keep the live speechSynthesis voice list in sync (even across async loads)
@@ -629,6 +646,148 @@ export default function App() {
   const [venues, setVenues] = useState<Venue[]>([]);
   const [isLoadingVenues, setIsLoadingVenues] = useState<boolean>(true);
 
+  // STAGE 2 & STAGE 3 states & algorithms
+  const [discoveryRadius, setDiscoveryRadius] = useState<number>(0); // 0, 0.2, 0.5, 1.0
+
+  const nearbyDiscoveredVenues = useMemo(() => {
+    if (discoveryRadius === 0 || routeData.length === 0) return [];
+
+    const pathCoords: { enlem: number; boylam: number; day: number; idx: number }[] = [];
+    routeData.forEach((day) => {
+      if (visibleDay !== null && day.day !== visibleDay) return;
+      day.venues.forEach((v, vIdx) => {
+        pathCoords.push({ enlem: v.koordinat.enlem, boylam: v.koordinat.boylam, day: day.day, idx: vIdx });
+      });
+    });
+
+    if (pathCoords.length === 0) return [];
+
+    const currentItineraryNames = new Set(routeData.flatMap(day => day.venues.map(v => v.isim)));
+    const matches: { venue: Venue; minDistance: number; nearestPathPoint: { enlem: number; boylam: number; day: number; idx: number } }[] = [];
+
+    venues.forEach((v) => {
+      if (currentItineraryNames.has(v.isim)) return;
+
+      let minDistance = Infinity;
+      let nearestPoint: typeof pathCoords[0] | null = null;
+
+      pathCoords.forEach((p) => {
+        const dist = getDistance(p.enlem, p.boylam, v.koordinat.enlem, v.koordinat.boylam);
+        if (dist < minDistance) {
+          minDistance = dist;
+          nearestPoint = p;
+        }
+      });
+
+      if (minDistance <= discoveryRadius && nearestPoint) {
+        matches.push({ venue: v, minDistance, nearestPathPoint: nearestPoint });
+      }
+    });
+
+    return matches.sort((a, b) => a.minDistance - b.minDistance).slice(0, 5);
+  }, [venues, routeData, visibleDay, discoveryRadius]);
+
+  const addDiscoveredVenueToRoute = (venue: Venue, nearestPoint: { day: number; idx: number }) => {
+    setRouteData(prev => {
+      const updated = prev.map(day => {
+        if (day.day !== nearestPoint.day) return day;
+        const newVenues = [...day.venues];
+        newVenues.splice(nearestPoint.idx + 1, 0, venue);
+        return { ...day, venues: newVenues };
+      });
+      return updated;
+    });
+
+    setToastMessage(lang === 'tr' 
+      ? `✨ "${venue.isim}" rotanıza eklendi ve güzergah güncellendi!` 
+      : `✨ "${venue.isim_en || venue.isim}" added to your route!`
+    );
+  };
+
+  const handleRescueVenue = (dayNo: number, targetVenue: Venue) => {
+    const currentItineraryNames = new Set(routeData.flatMap(day => day.venues.map(v => v.isim)));
+    let bestAlternative: Venue | null = null;
+    let minDistance = Infinity;
+
+    venues.forEach((v) => {
+      if (v.tur !== targetVenue.tur) return;
+      if (currentItineraryNames.has(v.isim)) return;
+
+      const dist = getDistance(
+        targetVenue.koordinat.enlem,
+        targetVenue.koordinat.boylam,
+        v.koordinat.enlem,
+        v.koordinat.boylam
+      );
+
+      if (dist < minDistance) {
+        minDistance = dist;
+        bestAlternative = v;
+      }
+    });
+
+    if (bestAlternative) {
+      setRouteData(prev => {
+        return prev.map(day => {
+          if (day.day !== dayNo) return day;
+          return {
+            ...day,
+            venues: day.venues.map(v => v.isim === targetVenue.isim ? bestAlternative! : v)
+          };
+        });
+      });
+
+      if (activeAudioVenue && activeAudioVenue.isim === targetVenue.isim) {
+        setActiveAudioVenue(bestAlternative);
+      }
+
+      setToastMessage(lang === 'tr'
+        ? `🔄 "${targetVenue.isim}" yerine en yakın ${targetVenue.tur} olan "${bestAlternative.isim}" eklendi! ✨`
+        : `🔄 "${targetVenue.isim}" replaced with closest ${targetVenue.tur_en || targetVenue.tur} "${bestAlternative.isim_en || bestAlternative.isim}"! ✨`
+      );
+    } else {
+      venues.forEach((v) => {
+        if (currentItineraryNames.has(v.isim)) return;
+        const dist = getDistance(
+          targetVenue.koordinat.enlem,
+          targetVenue.koordinat.boylam,
+          v.koordinat.enlem,
+          v.koordinat.boylam
+        );
+        if (dist < minDistance) {
+          minDistance = dist;
+          bestAlternative = v;
+        }
+      });
+
+      if (bestAlternative) {
+        setRouteData(prev => {
+          return prev.map(day => {
+            if (day.day !== dayNo) return day;
+            return {
+              ...day,
+              venues: day.venues.map(v => v.isim === targetVenue.isim ? bestAlternative! : v)
+            };
+          });
+        });
+
+        if (activeAudioVenue && activeAudioVenue.isim === targetVenue.isim) {
+          setActiveAudioVenue(bestAlternative);
+        }
+
+        setToastMessage(lang === 'tr'
+          ? `🔄 Kategori eşleşmesi bulunamadığından, en yakın yer olan "${bestAlternative.isim}" ile güncellendi! ✨`
+          : `🔄 No category fit, replaced with closest overall spot "${bestAlternative.isim_en || bestAlternative.isim}"! ✨`
+        );
+      } else {
+        setToastMessage(lang === 'tr'
+          ? "❌ Rotaya eklenebilecek uygun bir alternatif yer bulunamadı."
+          : "❌ No suitable alternative venue could be found."
+        );
+      }
+    }
+  };
+
   const t = TRANSLATIONS[lang];
 
   const districts = ALL_DISTRICTS;
@@ -751,6 +910,8 @@ export default function App() {
               if (data.preferences) setPreferences(data.preferences);
               if (data.weatherOptimized !== undefined) setWeatherOptimized(data.weatherOptimized);
               if (data.dailyWeather) setDailyWeather(data.dailyWeather);
+              if (data.discoveryRadius !== undefined) setDiscoveryRadius(data.discoveryRadius);
+              if (Array.isArray(data.visitedVenues)) setVisitedVenues(data.visitedVenues);
               setActiveScreen('app');
               setIsViewingRoute(true);
               setIsRightSidebarOpen(true);
@@ -798,11 +959,13 @@ export default function App() {
         pace,
         preferences,
         weatherOptimized,
-        dailyWeather
+        dailyWeather,
+        discoveryRadius,
+        visitedVenues
       };
       localStorage.setItem('active_istanbul_route', JSON.stringify(dataToStore));
     }
-  }, [routeData, activeTab, selectedHotel, selectedDistrict, duration, pace, preferences, weatherOptimized, dailyWeather]);
+  }, [routeData, activeTab, selectedHotel, selectedDistrict, duration, pace, preferences, weatherOptimized, dailyWeather, discoveryRadius, visitedVenues]);
 
   // Monitor auto draw trigger
   useEffect(() => {
@@ -984,6 +1147,8 @@ export default function App() {
   const clearRoute = () => {
     setRouteData([]);
     setIsViewingRoute(false);
+    setIsSidebarOpen(true);
+    setIsRightSidebarOpen(false);
     setVisibleDay(null);
     setDailyWeather([]);
     setWeatherOptimized(false);
@@ -2006,8 +2171,9 @@ export default function App() {
                             <Marker 
                               key={`${dIdx}-${vIdx}`}
                               position={[v.koordinat.enlem, v.koordinat.boylam]}
-                              icon={createCategoryIcon(v.tur, `${dIdx + 1}. ${t.day} - ${vIdx + 1}`, dayColors[dIdx % dayColors.length])}
+                              icon={createCategoryIcon(v.tur, `${dIdx + 1}. ${t.day} - ${vIdx + 1}`, dayColors[dIdx % dayColors.length], visitedVenues.includes(v.isim))}
                               zIndexOffset={2000}
+                              opacity={visitedVenues.includes(v.isim) ? 0.3 : 1.0}
                               eventHandlers={{
                                 click: () => setSelectedVenue(v)
                               }}
@@ -2016,6 +2182,52 @@ export default function App() {
                         </React.Fragment>
                       );
                     })}
+
+                    {/* Discovered nearby spots corridor markers on map */}
+                    {discoveryRadius > 0 && nearbyDiscoveredVenues.map(({ venue, nearestPathPoint, minDistance }) => (
+                      <Marker
+                        key={`discovered-${venue.isim}`}
+                        position={[venue.koordinat.enlem, venue.koordinat.boylam]}
+                        icon={L.divIcon({
+                          html: `
+                            <div class="relative flex items-center justify-center w-8 h-8">
+                              <div class="absolute w-6 h-6 bg-emerald-400 rounded-full animate-ping opacity-70"></div>
+                              <div class="relative w-6 h-6 bg-emerald-500 border-2 border-white rounded-full flex items-center justify-center shadow-md text-white hover:scale-110 transition-transform">
+                                <i class="fa-solid fa-plus text-[9px] font-black"></i>
+                              </div>
+                            </div>
+                          `,
+                          className: '',
+                          iconSize: [24, 24],
+                          iconAnchor: [12, 12],
+                        })}
+                      >
+                        <Popup className="custom-popup">
+                          <div className="p-3 font-semibold text-xs space-y-2 text-slate-900 bg-white rounded-xl">
+                            <div className="font-black text-[10px] uppercase tracking-tight text-emerald-600">
+                              {lang === 'tr' ? 'Keşfedilen Spot' : 'Discovered Spot'}
+                            </div>
+                            <div className="font-extrabold text-xs text-slate-900 max-w-[200px]">
+                              <b>Mekan Adı:</b> {lang === 'tr' ? venue.isim : (venue.isim_en || venue.isim)}
+                            </div>
+                            <div className="text-[10px] text-slate-500 font-medium leading-relaxed">
+                              {lang === 'tr' 
+                                ? `Rotadaki en yakın durağa ${(minDistance * 1000).toFixed(0)}m mesafede` 
+                                : `${(minDistance * 1000).toFixed(0)}m from nearest route stop`}
+                            </div>
+                            <button
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                addDiscoveredVenueToRoute(venue, nearestPathPoint);
+                              }}
+                              className="w-full mt-2 px-3 py-1.5 bg-emerald-500 hover:bg-emerald-600 text-white rounded-xl font-black text-[9.5px] tracking-wider uppercase active:scale-95 transition-all text-center cursor-pointer"
+                            >
+                              {lang === 'tr' ? 'Rotaya Ekle' : 'Add to Route'}
+                            </button>
+                          </div>
+                        </Popup>
+                      </Marker>
+                    ))}
 
                     <MapFlyer target={mapCenterState} />
                     <MapUpdater center={selectedVenue ? [selectedVenue.koordinat.enlem, selectedVenue.koordinat.boylam] : null} />
@@ -2165,7 +2377,10 @@ export default function App() {
                         ) : (
                           <div className="flex items-center gap-2.5">
                             <i className="fa-solid fa-calendar-day text-blue-600 text-xs animate-pulse" />
-                            <span className="text-[11px] font-black uppercase tracking-[0.15em] text-[#1E293B] dark:text-slate-200 whitespace-nowrap">
+                            <span 
+                              className="text-[9.5px] lg:text-[11.5px] font-black uppercase tracking-[0.25em] whitespace-nowrap"
+                              style={{ color: theme === 'dark' ? '#F8FAFC' : '#1E293B', fontWeight: 800 }}
+                            >
                               {lang === 'tr' ? 'PLANI GÖR' : 'VIEW PLAN'}
                             </span>
                             <div className="flex h-2 w-2 relative">
@@ -2176,8 +2391,8 @@ export default function App() {
                         )}
                       </button>
 
-                      <div className="flex-1 flex flex-col w-full max-w-full overflow-hidden">
-                        <div className={cn("p-5 md:p-6 border-b shrink-0", theme === 'dark' ? "border-slate-800" : "border-slate-200")}>
+                      <div className="flex-1 flex flex-col w-full max-w-full overflow-y-auto h-full custom-scrollbar pb-10">
+                        <div className={cn("p-5 md:p-6", theme === 'dark' ? "border-slate-800" : "border-slate-200")}>
                           <div className="flex items-center justify-between">
                             <h2 className={cn("text-[11px] md:text-[13px] font-black uppercase tracking-[0.25em]", theme === 'dark' ? "text-white" : "text-slate-900")}>
                               {lang === 'tr' ? 'GÜNLÜK ROTA PLANI' : 'DAILY ROUTE PLAN'}
@@ -2211,6 +2426,57 @@ export default function App() {
                               </div>
                             </motion.div>
                           )}
+
+                          {/* Discovery Radius slider with STAGE 4 Info Tooltip */}
+                          <div className={cn("p-4 rounded-2xl border mt-4 space-y-3", theme === 'dark' ? "bg-slate-950/20 border-slate-800" : "bg-slate-50 border-slate-200/60")}>
+                            <div className="flex justify-between items-center">
+                              <div className="flex items-center gap-1.5 min-w-0">
+                                <label className={cn("text-[11px] font-black uppercase tracking-wider flex items-center gap-1.5 whitespace-nowrap", theme === 'dark' ? "text-slate-300" : "text-slate-700")}>
+                                  <span>🔍</span>
+                                  <span>{lang === 'tr' ? 'YAKINDAKİ KEŞİF ÇAPI' : 'NEARBY DISCOVERY RADIUS'}</span>
+                                </label>
+                                <div className="group relative flex items-center">
+                                  <span className="text-slate-400 hover:text-blue-500 cursor-pointer text-xs transition-colors shrink-0 font-bold select-none">
+                                    ℹ️
+                                  </span>
+                                  <div className="absolute left-1/2 -translate-x-1/2 bottom-full mb-3 w-64 p-3.5 rounded-2xl shadow-2xl bg-slate-950 border border-slate-800 text-white text-[10px] font-bold leading-normal opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all duration-300 z-[9999] pointer-events-none text-left">
+                                    Mevcut rotanızdan fazla uzaklaşmadan, belirlediğiniz mesafe koridorundaki gizli cevherleri ve tarihi mekanları keşfedip rotanıza ekleyin.
+                                    <div className="absolute top-full left-1/2 -translate-x-1/2 border-t-8 border-t-slate-950 border-x-8 border-x-transparent" />
+                                  </div>
+                                </div>
+                              </div>
+                              <span className="text-[10px] font-black text-emerald-600 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-950/40 px-2 py-0.5 rounded-md shrink-0">
+                                {discoveryRadius === 0 
+                                  ? (lang === 'tr' ? 'Kapalı' : 'Off') 
+                                  : (discoveryRadius === 0.2 ? '200m' : discoveryRadius === 0.5 ? '500m' : '1km')}
+                              </span>
+                            </div>
+                            
+                            <div className="relative pt-1">
+                              <input
+                                type="range"
+                                min="0"
+                                max="3"
+                                step="1"
+                                value={[0, 0.2, 0.5, 1.0].indexOf(discoveryRadius)}
+                                onChange={(e) => {
+                                  const options = [0, 0.2, 0.5, 1.0];
+                                  const idx = parseInt(e.target.value, 10);
+                                  setDiscoveryRadius(options[idx]);
+                                }}
+                                className="w-full h-2 rounded-lg appearance-none cursor-pointer bg-slate-200 dark:bg-slate-700 accent-emerald-500 overflow-hidden"
+                                style={{
+                                  background: `linear-gradient(to right, #10b981 0%, #10b981 ${([0, 0.2, 0.5, 1.0].indexOf(discoveryRadius) / 3) * 100}%, ${theme === 'dark' ? '#334155' : '#e2e8f0'} ${([0, 0.2, 0.5, 1.0].indexOf(discoveryRadius) / 3) * 100}%, ${theme === 'dark' ? '#334155' : '#e2e8f0'} 100%)`
+                                }}
+                              />
+                              <div className="flex justify-between text-[9px] font-bold text-slate-400 dark:text-slate-500 px-1 mt-1.5">
+                                <span>{lang === 'tr' ? 'Kapalı' : 'Off'}</span>
+                                <span>200m</span>
+                                <span>500m</span>
+                                <span>1km</span>
+                              </div>
+                            </div>
+                          </div>
 
                           {/* Day Filter Bubbles */}
                           <div className={cn("flex flex-wrap p-1.5 rounded-2xl border gap-1.5 mt-4", theme === 'dark' ? "bg-slate-950/40 border-slate-800" : "bg-slate-50 border-slate-200/60")}>
@@ -2248,7 +2514,7 @@ export default function App() {
                           </div>
                         </div>
 
-                        <div className="flex-1 overflow-y-auto custom-scrollbar p-6 md:p-8 pb-32 space-y-8 md:space-y-10">
+                        <div className="p-5 md:p-6 pt-0 space-y-8 md:space-y-10">
                           {routeData.filter(d => visibleDay === null || d.day === visibleDay).map((day, idx) => (
                             <div key={day.day} className={cn("space-y-4 relative pl-6 border-l-2", theme === 'dark' ? "border-slate-800" : "border-slate-150")}>
                               <div className={cn("absolute -left-[5px] top-0 w-2 h-2 rounded-full", theme === 'dark' ? "bg-slate-700" : "bg-slate-300")} />
@@ -2278,11 +2544,11 @@ export default function App() {
                                     initial={{ x: 20, opacity: 0 }}
                                     animate={{ x: 0, opacity: 1 }}
                                     className={cn(
-                                      "group p-4 border rounded-3xl transition-all cursor-pointer shadow-sm relative overflow-hidden",
+                                      "group p-4 border rounded-3xl transition-opacity duration-300 cursor-pointer shadow-sm relative",
                                       theme === 'dark' 
                                         ? "bg-slate-800 border-slate-700/80 text-white hover:border-blue-500 hover:shadow-2xl hover:shadow-blue-900/10" 
                                         : "bg-slate-50/75 border-slate-200/80 text-slate-900 hover:border-blue-500 hover:bg-white hover:shadow-2xl hover:shadow-blue-50",
-                                      visitedVenues.includes(v.isim) && "opacity-45 hover:opacity-90"
+                                      visitedVenues.includes(v.isim) ? "opacity-40" : "opacity-100"
                                     )}
                                     onClick={() => setSelectedVenue(v)}
                                   >
@@ -2326,12 +2592,40 @@ export default function App() {
                                           )}>
                                             {lang === 'tr' ? v.isim : (v.isim_en || v.isim)}
                                           </div>
-                                          <div className="text-[10px] text-slate-400 font-bold uppercase tracking-widest mt-0.5">
+                                          <div className={cn(
+                                            "text-[10px] text-slate-400 font-bold uppercase tracking-widest mt-0.5",
+                                            visitedVenues.includes(v.isim) && "line-through opacity-60"
+                                          )}>
                                             {lang === 'tr' ? v.tur : (v.tur_en || v.tur)}
                                           </div>
                                         </div>
                                       </div>
                                       
+                                      {/* STAGE 5: Günü Kurtar Button with rich informative hover tooltip */}
+                                      <div className="group/rescue relative flex items-center">
+                                        <button 
+                                          onClick={(e) => {
+                                            e.stopPropagation(); // Avoid opening full card modal
+                                            handleRescueVenue(day.day, v);
+                                          }}
+                                          className={cn(
+                                            "shrink-0 w-8 h-8 rounded-full flex items-center justify-center transition-all bg-amber-500/10 hover:bg-amber-500/20 text-amber-500 dark:text-amber-400 border border-amber-500/25 active:scale-95 hover:scale-105 shadow-sm"
+                                          )}
+                                          title={lang === 'tr' 
+                                            ? "Bu mekan kapalı, restorasyonda veya kalabalıksa; bu butona basarak mekanı plandan çıkarabilir ve en yakın benzer türdeki alternatif yerle otomatik değiştirebilirsiniz." 
+                                            : "If this venue is closed, under restoration, or too crowded; press this button to remove it and automatically swap it with the nearest alternative place of a similar type."
+                                          }
+                                        >
+                                          <i className="fa-solid fa-arrows-rotate text-[10px]" />
+                                        </button>
+                                        <div className="absolute right-0 bottom-full mb-3 w-64 p-3.5 rounded-2xl shadow-2xl bg-slate-950 border border-slate-800 text-white text-[10px] font-bold leading-normal opacity-0 invisible group-hover/rescue:opacity-100 group-hover/rescue:visible transition-all duration-350 ease-out z-[9999] pointer-events-none text-left">
+                                          {lang === 'tr' 
+                                            ? "Bu mekan kapalı, restorasyonda veya kalabalıksa; bu butona basarak mekanı plandan çıkarabilir ve en yakın benzer türdeki alternatif yerle otomatik değiştirebilirsiniz." 
+                                            : "If this venue is closed, under restoration, or too crowded; press this button to remove it and automatically swap it with the nearest alternative place of a similar type."}
+                                          <div className="absolute top-full right-3 border-t-8 border-t-slate-950 border-x-8 border-x-transparent" />
+                                        </div>
+                                      </div>
+
                                       <button 
                                         onClick={(e) => {
                                           e.stopPropagation(); // Avoid opening full card modal
@@ -2351,6 +2645,57 @@ export default function App() {
                                   </motion.div>
                                 ))}
                               </div>
+
+                              {/* Recommended nearby discoveries for this day */}
+                              {(() => {
+                                const dayDiscoveries = nearbyDiscoveredVenues.filter(item => item.nearestPathPoint.day === day.day);
+                                if (dayDiscoveries.length === 0) return null;
+                                return (
+                                  <div className="mt-5 pt-4 border-t border-dashed border-slate-200 dark:border-slate-800 space-y-3">
+                                    <div className="flex items-center gap-1.5 text-[10px] font-black text-emerald-600 dark:text-emerald-400 uppercase tracking-widest leading-none">
+                                      <span className="animate-pulse">✨</span>
+                                      <span>{lang === 'tr' ? 'YAKINDAKİ KEŞİF ÖNERİLERİ' : 'NEARBY DISCOVERY SUGGESTIONS'}</span>
+                                    </div>
+                                    <div className="flex flex-col gap-2">
+                                      {dayDiscoveries.map(({ venue, nearestPathPoint, minDistance }) => (
+                                        <div 
+                                          key={venue.isim}
+                                          className={cn(
+                                            "flex items-center justify-between p-3.5 rounded-2xl border text-xs transition-colors hover:scale-[1.01] duration-300",
+                                            theme === 'dark' 
+                                              ? "bg-slate-800 border-slate-700/80 text-white" 
+                                              : "bg-slate-100 border-slate-200/80 text-slate-900"
+                                          )}
+                                        >
+                                          <div className="min-w-0 pr-2">
+                                            <div 
+                                              className="font-extrabold truncate uppercase tracking-tight text-[11px]"
+                                              style={{ color: theme === 'dark' ? '#FFFFFF' : '#0F172A' }}
+                                            >
+                                              {lang === 'tr' ? venue.isim : (venue.isim_en || venue.isim)}
+                                            </div>
+                                            <div className={cn(
+                                              "text-[10px] font-bold uppercase tracking-wide mt-1",
+                                              theme === 'dark' ? "text-slate-400" : "text-slate-500"
+                                            )}>
+                                              {(TRANSLATIONS[lang].cats as any)[venue.tur] || venue.tur} • {(minDistance * 1000).toFixed(0)}m
+                                            </div>
+                                          </div>
+                                          <button
+                                            onClick={(e) => {
+                                              e.stopPropagation();
+                                              addDiscoveredVenueToRoute(venue, nearestPathPoint);
+                                            }}
+                                            className="px-3.5 py-1.5 bg-emerald-500 hover:bg-emerald-600 text-white rounded-xl font-black text-[9px] tracking-wider uppercase active:scale-95 transition-all shrink-0 cursor-pointer shadow-md shadow-emerald-500/10"
+                                          >
+                                            {lang === 'tr' ? 'Ekle' : 'Add'}
+                                          </button>
+                                        </div>
+                                      ))}
+                                    </div>
+                                  </div>
+                                );
+                              })()}
                             </div>
                           ))}
                         </div>
@@ -2464,7 +2809,7 @@ export default function App() {
 
               <div className="mb-5 sm:mb-6">
                 <h3 className="text-[10px] font-black text-slate-400 dark:text-slate-500 mb-1 uppercase tracking-[0.20em]">{t.aboutTitle}</h3>
-                <p className="text-xs text-slate-500 dark:text-slate-400 leading-relaxed font-semibold">{t.aboutDesc}</p>
+                <p className="text-xs text-slate-500 dark:text-slate-400 leading-relaxed font-semibold whitespace-pre-line">{t.aboutDesc}</p>
               </div>
               
               <button 
@@ -2881,7 +3226,7 @@ export default function App() {
       </AnimatePresence>
 
       {/* Unified Mobile Bottom Navigation Floating Action Bar */}
-      {activeScreen === 'app' && !isMobileNavOpen && !isSidebarOpen && !isRightSidebarOpen && (
+      {activeScreen === 'app' && !isMobileNavOpen && (routeData.length === 0 || (!isSidebarOpen && !isRightSidebarOpen)) && (
         <div className="lg:hidden fixed bottom-6 left-1/2 -translate-x-1/2 z-[3100] w-[92%] max-w-sm">
           <motion.div 
             initial={{ y: 50, opacity: 0 }}

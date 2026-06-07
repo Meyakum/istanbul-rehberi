@@ -81,7 +81,9 @@ export const TRANSLATIONS = {
     howItWorksDesc: "Otelini veya gezmek istediğin semti seç, gün sayısını belirle; yapay zekamız senin için en kısa ulaşım süreli ve en mantıklı gezi rotasını anında hazırlasın!",
     optimization: "Mesafe Optimizasyonu", optimizationDesc: "En yakın noktalar algoritma ile sıralanır.",
     typeFiltering: "Tür Bazlı Filtreleme", typeFilteringDesc: "Sadece ilgi duyduğunuz kategoriler dâhil edilir.",
-    aboutDesc: "Bu proje, İstanbul'un tarihi, kültürel ve doğal zenginliklerini yerli ve yabancı turistlere en doğru şekilde aktarmak için geliştirilmiştir. Kültür ve Turizm Bakanlığı veri standartları referans alınarak hazırlanan akıllı algoritması, kullanıcılara sesli rehberlik desteği, kategori filtreleme ve gün bazlı optimizasyon sunarak benzersiz bir şehir deneyimi sağlar.",
+    aboutDesc: `İstanbul Akıllı Rehber, dünyanın en büyüleyici metropollerinden biri olan İstanbul'u keşfetmeyi tamamen kişiselleştirilmiş ve zahmetsiz bir deneyime dönüştürmek amacıyla geliştirilmiş yeni nesil bir dijital seyahat planlayıcıdır.
+
+Kültür ve Turizm Bakanlığı veri standartları referans alınarak hazırlanan projemiz; şehrin binlerce yıllık tarihi, kültürel ve doğal zenginliklerini dinamik rota optimizasyon algoritmalarıyla harmanlar. Amacımız, yerli ve yabancı turistlerin kısıtlı zamanlarını en verimli, en konforlu ve hava durumu gibi anlık değişen çevre koşullarına en uyumlu şekilde değerlendirmelerini sağlayarak, benzersiz ve akıllı bir şehir deneyimi sunmaktır.`,
     cats: {
       worship: "İbadet & İnanç",
       history: "Tarih & Müze",
