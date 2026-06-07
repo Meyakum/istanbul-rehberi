@@ -2727,12 +2727,8 @@ export default function App() {
                                             handleRescueVenue(day.day, v);
                                           }}
                                           className={cn(
-                                            "shrink-0 w-8 h-8 rounded-full flex items-center justify-center transition-all bg-amber-500/10 hover:bg-amber-500/20 text-amber-500 dark:text-amber-400 border border-amber-500/25 active:scale-95 hover:scale-105 shadow-sm"
+                                            "shrink-0 w-8 h-8 rounded-full flex items-center justify-center transition-all bg-amber-500/10 hover:bg-amber-500/20 text-amber-550 dark:text-amber-400 border border-amber-500/25 active:scale-95 hover:scale-105 shadow-sm"
                                           )}
-                                          title={lang === 'tr' 
-                                            ? "Bu mekan kapalı, restorasyonda veya kalabalıksa; bu butona basarak mekanı plandan çıkarabilir ve en yakın benzer türdeki alternatif yerle otomatik değiştirebilirsiniz." 
-                                            : "If this venue is closed, under restoration, or too crowded; press this button to remove it and automatically swap it with the nearest alternative place of a similar type."
-                                          }
                                         >
                                           <i className="fa-solid fa-arrows-rotate text-[10px]" />
                                         </button>
